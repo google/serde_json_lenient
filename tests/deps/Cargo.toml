@@ -7,7 +7,7 @@ publish = false
 [workspace]
 
 [features]
-arbitrary_precision = ["serde_json/arbitrary_precision"]
+arbitrary_precision = ["serde_jsonrc/arbitrary_precision"]
 
 [dependencies]
-serde_json = { path = "../.." }
+serde_jsonrc = { path = "../.." }

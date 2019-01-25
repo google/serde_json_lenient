@@ -3,9 +3,9 @@
 extern crate serde;
 
 #[macro_use]
-extern crate serde_json;
+extern crate serde_jsonrc;
 
-use serde_json::{Deserializer, Value};
+use serde_jsonrc::{Deserializer, Value};
 
 // Rustfmt issue https://github.com/rust-lang-nursery/rustfmt/issues/2740
 #[cfg_attr(rustfmt, rustfmt_skip)]

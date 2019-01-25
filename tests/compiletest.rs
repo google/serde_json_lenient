@@ -10,7 +10,7 @@ fn ui() {
              --edition=2018 \
              -L tests/deps/target/debug/deps \
              -Z unstable-options \
-             --extern serde_json \
+             --extern serde_jsonrc \
              ",
         )),
         ..Default::default()

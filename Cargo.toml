@@ -1,11 +1,11 @@
 [package]
-name = "serde_json"
+name = "serde_jsonrc"
 version = "1.0.37" # remember to update html_root_url
 authors = ["Erick Tryzelaar <erick.tryzelaar@gmail.com>", "David Tolnay <dtolnay@gmail.com>"]
 license = "MIT/Apache-2.0"
 description = "A JSON serialization file format"
 repository = "https://github.com/serde-rs/json"
-documentation = "http://docs.serde.rs/serde_json/"
+documentation = "http://docs.serde.rs/serde_jsonrc/"
 keywords = ["json", "serde", "serialization"]
 categories = ["encoding"]
 readme = "README.md"
@@ -38,12 +38,12 @@ features = ["raw_value"]
 [features]
 default = []
 
-# Use a different representation for the map type of serde_json::Value.
+# Use a different representation for the map type of serde_jsonrc::Value.
 # This allows data to be read into a Value and written back to a JSON string
 # while preserving the order of map keys in the input.
 preserve_order = ["indexmap"]
 
-# Use an arbitrary precision number representation for serde_json::Number. This
+# Use an arbitrary precision number representation for serde_jsonrc::Number. This
 # allows JSON numbers of arbitrary size/precision to be read into a Number and
 # written back to a JSON string without loss of precision.
 arbitrary_precision = []

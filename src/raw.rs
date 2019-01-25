@@ -25,7 +25,7 @@ use error::Error;
 /// ```edition2018
 /// # use serde_derive::{Deserialize, Serialize};
 /// use serde::{Deserialize, Serialize};
-/// use serde_json::{Result, value::RawValue};
+/// use serde_jsonrc::{Result, value::RawValue};
 ///
 /// #[derive(Deserialize)]
 /// struct Input<'a> {
@@ -42,18 +42,18 @@ use error::Error;
 /// // Efficiently rearrange JSON input containing separate "code" and "payload"
 /// // keys into a single "info" key holding an array of code and payload.
 /// //
-/// // This could be done equivalently using serde_json::Value as the type for
+/// // This could be done equivalently using serde_jsonrc::Value as the type for
 /// // payload, but &RawValue will perform netter because it does not require
 /// // memory allocation. The correct range of bytes is borrowed from the input
 /// // data and pasted verbatim into the output.
 /// fn rearrange(input: &str) -> Result<String> {
-///     let input: Input = serde_json::from_str(input)?;
+///     let input: Input = serde_jsonrc::from_str(input)?;
 ///
 ///     let output = Output {
 ///         info: (input.code, input.payload),
 ///     };
 ///
-///     serde_json::to_string(&output)
+///     serde_jsonrc::to_string(&output)
 /// }
 ///
 /// fn main() -> Result<()> {
@@ -71,7 +71,7 @@ use error::Error;
 ///
 /// ```edition2018
 /// # use serde_derive::Deserialize;
-/// # use serde_json::value::RawValue;
+/// # use serde_jsonrc::value::RawValue;
 /// #
 /// #[derive(Deserialize)]
 /// struct SomeStruct<'a> {
@@ -81,20 +81,20 @@ use error::Error;
 /// ```
 ///
 /// The borrowed form is suitable when deserializing through
-/// [`serde_json::from_str`] and [`serde_json::from_slice`] which support
+/// [`serde_jsonrc::from_str`] and [`serde_json::from_slice`] which support
 /// borrowing from the input data without memory allocation.
 ///
-/// When deserializing through [`serde_json::from_reader`] you will need to use
+/// When deserializing through [`serde_jsonrc::from_reader`] you will need to use
 /// the boxed form of `RawValue` instead. This is almost as efficient but
 /// involves buffering the raw value from the I/O stream into memory.
 ///
-/// [`serde_json::from_str`]: ../fn.from_str.html
-/// [`serde_json::from_slice`]: ../fn.from_slice.html
-/// [`serde_json::from_reader`]: ../fn.from_reader.html
+/// [`serde_jsonrc::from_str`]: ../fn.from_str.html
+/// [`serde_jsonrc::from_slice`]: ../fn.from_slice.html
+/// [`serde_jsonrc::from_reader`]: ../fn.from_reader.html
 ///
 /// ```edition2018
 /// # use serde_derive::Deserialize;
-/// # use serde_json::value::RawValue;
+/// # use serde_jsonrc::value::RawValue;
 /// #
 /// #[derive(Deserialize)]
 /// struct SomeStruct {
@@ -109,7 +109,7 @@ use error::Error;
 ///
 /// ```toml
 /// [dependencies]
-/// serde_json = { version = "1.0", features = ["raw_value"] }
+/// serde_jsonrc = { version = "1.0", features = ["raw_value"] }
 /// ```
 #[repr(C)]
 pub struct RawValue {
@@ -164,7 +164,7 @@ impl Display for RawValue {
 impl RawValue {
     /// Convert an owned `String` of JSON data to an owned `RawValue`.
     ///
-    /// This function is equivalent to `serde_json::from_str::<Box<RawValue>>`
+    /// This function is equivalent to `serde_jsonrc::from_str::<Box<RawValue>>`
     /// except that we avoid an allocation and memcpy if both of the following
     /// are true:
     ///
@@ -187,7 +187,7 @@ impl RawValue {
     /// ```edition2018
     /// # use serde_derive::Deserialize;
     /// use serde::Deserialize;
-    /// use serde_json::{Result, value::RawValue};
+    /// use serde_jsonrc::{Result, value::RawValue};
     ///
     /// #[derive(Deserialize)]
     /// struct Response<'a> {
@@ -197,7 +197,7 @@ impl RawValue {
     /// }
     ///
     /// fn process(input: &str) -> Result<()> {
-    ///     let response: Response = serde_json::from_str(input)?;
+    ///     let response: Response = serde_jsonrc::from_str(input)?;
     ///
     ///     let payload = response.payload.get();
     ///     if payload.starts_with('{') {
@@ -219,7 +219,7 @@ impl RawValue {
     }
 }
 
-pub const TOKEN: &'static str = "$serde_json::private::RawValue";
+pub const TOKEN: &'static str = "$serde_jsonrc::private::RawValue";
 
 impl Serialize for RawValue {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

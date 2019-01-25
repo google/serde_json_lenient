@@ -38,10 +38,10 @@
 //! # Operating on untyped JSON values
 //!
 //! Any valid JSON data can be manipulated in the following recursive enum
-//! representation. This data structure is [`serde_json::Value`][value].
+//! representation. This data structure is [`serde_jsonrc::Value`][value].
 //!
 //! ```edition2018
-//! # use serde_json::{Number, Map};
+//! # use serde_jsonrc::{Number, Map};
 //! #
 //! # #[allow(dead_code)]
 //! enum Value {
@@ -54,14 +54,14 @@
 //! }
 //! ```
 //!
-//! A string of JSON data can be parsed into a `serde_json::Value` by the
-//! [`serde_json::from_str`][from_str] function. There is also
+//! A string of JSON data can be parsed into a `serde_jsonrc::Value` by the
+//! [`serde_jsonrc::from_str`][from_str] function. There is also
 //! [`from_slice`][from_slice] for parsing from a byte slice &[u8] and
 //! [`from_reader`][from_reader] for parsing from any `io::Read` like a File or
 //! a TCP stream.
 //!
 //! ```edition2018
-//! use serde_json::{Result, Value};
+//! use serde_jsonrc::{Result, Value};
 //!
 //! fn untyped_example() -> Result<()> {
 //!     // Some JSON input data as a &str. Maybe this comes from the user.
@@ -75,8 +75,8 @@
 //!             ]
 //!         }"#;
 //!
-//!     // Parse the string of data into serde_json::Value.
-//!     let v: Value = serde_json::from_str(data)?;
+//!     // Parse the string of data into serde_jsonrc::Value.
+//!     let v: Value = serde_jsonrc::from_str(data)?;
 //!
 //!     // Access parts of the data by indexing with square brackets.
 //!     println!("Please call {} at the number {}", v["name"], v["phones"][0]);
@@ -104,7 +104,7 @@
 //! a JSON string to a Rust string with [`as_str()`] or avoiding the use of
 //! `Value` as described in the following section.
 //!
-//! [`as_str()`]: https://docs.serde.rs/serde_json/enum.Value.html#method.as_str
+//! [`as_str()`]: https://docs.serde.rs/serde_jsonrc/enum.Value.html#method.as_str
 //!
 //! The `Value` representation is sufficient for very basic tasks but can be
 //! tedious to work with for anything more significant. Error handling is
@@ -121,7 +121,7 @@
 //! ```edition2018
 //! # use serde_derive::{Deserialize, Serialize};
 //! use serde::{Deserialize, Serialize};
-//! use serde_json::Result;
+//! use serde_jsonrc::Result;
 //!
 //! #[derive(Serialize, Deserialize)]
 //! struct Person {
@@ -143,9 +143,9 @@
 //!         }"#;
 //!
 //!     // Parse the string of data into a Person object. This is exactly the
-//!     // same function as the one that produced serde_json::Value above, but
+//!     // same function as the one that produced serde_jsonrc::Value above, but
 //!     // now we are asking it for a Person as output.
-//!     let p: Person = serde_json::from_str(data)?;
+//!     let p: Person = serde_jsonrc::from_str(data)?;
 //!
 //!     // Do things just like with any other Rust data structure.
 //!     println!("Please call {} at the number {}", p.name, p.phones[0]);
@@ -158,7 +158,7 @@
 //! # }
 //! ```
 //!
-//! This is the same `serde_json::from_str` function as before, but this time we
+//! This is the same `serde_jsonrc::from_str` function as before, but this time we
 //! assign the return value to a variable of type `Person` so Serde will
 //! automatically interpret the input data as a `Person` and produce informative
 //! error messages if the layout does not conform to what a `Person` is expected
@@ -172,21 +172,21 @@
 //! Once we have `p` of type `Person`, our IDE and the Rust compiler can help us
 //! use it correctly like they do for any other Rust code. The IDE can
 //! autocomplete field names to prevent typos, which was impossible in the
-//! `serde_json::Value` representation. And the Rust compiler can check that
+//! `serde_jsonrc::Value` representation. And the Rust compiler can check that
 //! when we write `p.phones[0]`, then `p.phones` is guaranteed to be a
 //! `Vec<String>` so indexing into it makes sense and produces a `String`.
 //!
 //! # Constructing JSON values
 //!
-//! Serde JSON provides a [`json!` macro][macro] to build `serde_json::Value`
+//! Serde JSON provides a [`json!` macro][macro] to build `serde_jsonrc::Value`
 //! objects with very natural JSON syntax. In order to use this macro,
-//! `serde_json` needs to be imported with the `#[macro_use]` attribute.
+//! `serde_jsonrc` needs to be imported with the `#[macro_use]` attribute.
 //!
 //! ```edition2018
-//! use serde_json::json;
+//! use serde_jsonrc::json;
 //!
 //! fn main() {
-//!     // The type of `john` is `serde_json::Value`
+//!     // The type of `john` is `serde_jsonrc::Value`
 //!     let john = json!({
 //!         "name": "John Doe",
 //!         "age": 43,
@@ -203,7 +203,7 @@
 //! }
 //! ```
 //!
-//! The `Value::to_string()` function converts a `serde_json::Value` into a
+//! The `Value::to_string()` function converts a `serde_jsonrc::Value` into a
 //! `String` of JSON text.
 //!
 //! One neat thing about the `json!` macro is that variables and expressions can
@@ -212,14 +212,14 @@
 //! be represented as JSON.
 //!
 //! ```edition2018
-//! # use serde_json::json;
+//! # use serde_jsonrc::json;
 //! #
 //! # fn random_phone() -> u16 { 0 }
 //! #
 //! let full_name = "John Doe";
 //! let age_last_year = 42;
 //!
-//! // The type of `john` is `serde_json::Value`
+//! // The type of `john` is `serde_jsonrc::Value`
 //! let john = json!({
 //!     "name": full_name,
 //!     "age": age_last_year + 1,
@@ -237,15 +237,15 @@
 //! # Creating JSON by serializing data structures
 //!
 //! A data structure can be converted to a JSON string by
-//! [`serde_json::to_string`][to_string]. There is also
-//! [`serde_json::to_vec`][to_vec] which serializes to a `Vec<u8>` and
-//! [`serde_json::to_writer`][to_writer] which serializes to any `io::Write`
+//! [`serde_jsonrc::to_string`][to_string]. There is also
+//! [`serde_jsonrc::to_vec`][to_vec] which serializes to a `Vec<u8>` and
+//! [`serde_jsonrc::to_writer`][to_writer] which serializes to any `io::Write`
 //! such as a File or a TCP stream.
 //!
 //! ```edition2018
 //! # use serde_derive::{Deserialize, Serialize};
 //! use serde::{Deserialize, Serialize};
-//! use serde_json::Result;
+//! use serde_jsonrc::Result;
 //!
 //! #[derive(Serialize, Deserialize)]
 //! struct Address {
@@ -261,7 +261,7 @@
 //!     };
 //!
 //!     // Serialize it to a JSON string.
-//!     let j = serde_json::to_string(&address)?;
+//!     let j = serde_jsonrc::to_string(&address)?;
 //!
 //!     // Print, write to a file, or send to an HTTP server.
 //!     println!("{}", j);
@@ -284,17 +284,17 @@
 //! This crate currently requires the Rust standard library. For JSON support in
 //! Serde without a standard library, please see the [`serde-json-core`] crate.
 //!
-//! [value]: https://docs.serde.rs/serde_json/value/enum.Value.html
-//! [from_str]: https://docs.serde.rs/serde_json/de/fn.from_str.html
-//! [from_slice]: https://docs.serde.rs/serde_json/de/fn.from_slice.html
-//! [from_reader]: https://docs.serde.rs/serde_json/de/fn.from_reader.html
-//! [to_string]: https://docs.serde.rs/serde_json/ser/fn.to_string.html
-//! [to_vec]: https://docs.serde.rs/serde_json/ser/fn.to_vec.html
-//! [to_writer]: https://docs.serde.rs/serde_json/ser/fn.to_writer.html
-//! [macro]: https://docs.serde.rs/serde_json/macro.json.html
-//! [`serde-json-core`]: https://japaric.github.io/serde-json-core/serde_json_core/
+//! [value]: https://docs.serde.rs/serde_jsonrc/value/enum.Value.html
+//! [from_str]: https://docs.serde.rs/serde_jsonrc/de/fn.from_str.html
+//! [from_slice]: https://docs.serde.rs/serde_jsonrc/de/fn.from_slice.html
+//! [from_reader]: https://docs.serde.rs/serde_jsonrc/de/fn.from_reader.html
+//! [to_string]: https://docs.serde.rs/serde_jsonrc/ser/fn.to_string.html
+//! [to_vec]: https://docs.serde.rs/serde_jsonrc/ser/fn.to_vec.html
+//! [to_writer]: https://docs.serde.rs/serde_jsonrc/ser/fn.to_writer.html
+//! [macro]: https://docs.serde.rs/serde_jsonrc/macro.json.html
+//! [`serde-json-core`]: https://japaric.github.io/serde-json-core/serde_jsonrc_core/
 
-#![doc(html_root_url = "https://docs.rs/serde_json/1.0.37")]
+#![doc(html_root_url = "https://docs.rs/serde_jsonrc/1.0.37")]
 #![cfg_attr(feature = "cargo-clippy", allow(renamed_and_removed_lints))]
 #![cfg_attr(feature = "cargo-clippy", deny(clippy, clippy_pedantic))]
 // Ignored clippy lints

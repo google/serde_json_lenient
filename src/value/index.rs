@@ -4,7 +4,7 @@ use std::ops;
 use super::Value;
 use map::Map;
 
-/// A type that can be used to index into a `serde_json::Value`.
+/// A type that can be used to index into a `serde_jsonrc::Value`.
 ///
 /// The [`get`] and [`get_mut`] methods of `Value` accept any type that
 /// implements `Index`, as does the [square-bracket indexing operator]. This
@@ -16,12 +16,12 @@ use map::Map;
 /// [square-bracket indexing operator]: ../enum.Value.html#impl-Index%3CI%3E
 ///
 /// This trait is sealed and cannot be implemented for types outside of
-/// `serde_json`.
+/// `serde_jsonrc`.
 ///
 /// # Examples
 ///
 /// ```edition2018
-/// # use serde_json::json;
+/// # use serde_jsonrc::json;
 /// #
 /// let data = json!({ "inner": [1, 2, 3] });
 ///
@@ -180,7 +180,7 @@ where
 {
     type Output = Value;
 
-    /// Index into a `serde_json::Value` using the syntax `value[0]` or
+    /// Index into a `serde_jsonrc::Value` using the syntax `value[0]` or
     /// `value["k"]`.
     ///
     /// Returns `Value::Null` if the type of `self` does not match the type of
@@ -194,7 +194,7 @@ where
     /// # Examples
     ///
     /// ```edition2018
-    /// # use serde_json::json;
+    /// # use serde_jsonrc::json;
     /// #
     /// let data = json!({
     ///     "x": {
@@ -218,7 +218,7 @@ impl<I> ops::IndexMut<I> for Value
 where
     I: Index,
 {
-    /// Write into a `serde_json::Value` using the syntax `value[0] = ...` or
+    /// Write into a `serde_jsonrc::Value` using the syntax `value[0] = ...` or
     /// `value["k"] = ...`.
     ///
     /// If the index is a number, the value must be an array of length bigger
@@ -233,7 +233,7 @@ where
     /// # Examples
     ///
     /// ```edition2018
-    /// # use serde_json::json;
+    /// # use serde_jsonrc::json;
     /// #
     /// let mut data = json!({ "x": 0 });
     ///

@@ -16,7 +16,7 @@ use raw::{BorrowedRawDeserializer, OwnedRawDeserializer};
 /// stable we can use actual specialization.
 ///
 /// This trait is sealed and cannot be implemented for types outside of
-/// `serde_json`.
+/// `serde_jsonrc`.
 pub trait Read<'de>: private::Sealed {
     #[doc(hidden)]
     fn next(&mut self) -> Result<Option<u8>>;

@@ -1,6 +1,6 @@
-extern crate serde_json;
+extern crate serde_jsonrc;
 
-use serde_json::{from_str, Value};
+use serde_jsonrc::{from_str, Value};
 
 #[test]
 fn test_map_order() {

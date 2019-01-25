@@ -18,7 +18,7 @@ use error::ErrorCode;
 #[cfg(feature = "arbitrary_precision")]
 /// Not public API. Should be pub(crate).
 #[doc(hidden)]
-pub const TOKEN: &'static str = "$serde_json::private::Number";
+pub const TOKEN: &'static str = "$serde_jsonrc::private::Number";
 
 /// Represents a JSON number, whether integer or floating point.
 #[derive(Clone, PartialEq)]
@@ -47,7 +47,7 @@ impl Number {
     /// return the integer value.
     ///
     /// ```edition2018
-    /// # use serde_json::json;
+    /// # use serde_jsonrc::json;
     /// #
     /// let big = i64::max_value() as u64 + 10;
     /// let v = json!({ "a": 64, "b": big, "c": 256.0 });
@@ -78,7 +78,7 @@ impl Number {
     /// return the integer value.
     ///
     /// ```edition2018
-    /// # use serde_json::json;
+    /// # use serde_jsonrc::json;
     /// #
     /// let v = json!({ "a": 64, "b": -64, "c": 256.0 });
     ///
@@ -110,7 +110,7 @@ impl Number {
     /// `is_u64` return false but this is not a guarantee in the future.
     ///
     /// ```edition2018
-    /// # use serde_json::json;
+    /// # use serde_jsonrc::json;
     /// #
     /// let v = json!({ "a": 256.0, "b": 64, "c": -64 });
     ///
@@ -142,7 +142,7 @@ impl Number {
     /// None otherwise.
     ///
     /// ```edition2018
-    /// # use serde_json::json;
+    /// # use serde_jsonrc::json;
     /// #
     /// let big = i64::max_value() as u64 + 10;
     /// let v = json!({ "a": 64, "b": big, "c": 256.0 });
@@ -173,7 +173,7 @@ impl Number {
     /// None otherwise.
     ///
     /// ```edition2018
-    /// # use serde_json::json;
+    /// # use serde_jsonrc::json;
     /// #
     /// let v = json!({ "a": 64, "b": -64, "c": 256.0 });
     ///
@@ -195,7 +195,7 @@ impl Number {
     /// Represents the number as f64 if possible. Returns None otherwise.
     ///
     /// ```edition2018
-    /// # use serde_json::json;
+    /// # use serde_jsonrc::json;
     /// #
     /// let v = json!({ "a": 256.0, "b": 64, "c": -64 });
     ///
@@ -221,7 +221,7 @@ impl Number {
     /// ```edition2018
     /// # use std::f64;
     /// #
-    /// # use serde_json::Number;
+    /// # use serde_jsonrc::Number;
     /// #
     /// assert!(Number::from_f64(256.0).is_some());
     ///

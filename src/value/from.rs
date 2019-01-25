@@ -34,7 +34,7 @@ impl From<f32> for Value {
     /// # Examples
     ///
     /// ```edition2018
-    /// use serde_json::Value;
+    /// use serde_jsonrc::Value;
     ///
     /// let f: f32 = 13.37;
     /// let x: Value = f.into();
@@ -50,7 +50,7 @@ impl From<f64> for Value {
     /// # Examples
     ///
     /// ```edition2018
-    /// use serde_json::Value;
+    /// use serde_jsonrc::Value;
     ///
     /// let f: f64 = 13.37;
     /// let x: Value = f.into();
@@ -66,7 +66,7 @@ impl From<bool> for Value {
     /// # Examples
     ///
     /// ```edition2018
-    /// use serde_json::Value;
+    /// use serde_jsonrc::Value;
     ///
     /// let b = false;
     /// let x: Value = b.into();
@@ -82,7 +82,7 @@ impl From<String> for Value {
     /// # Examples
     ///
     /// ```edition2018
-    /// use serde_json::Value;
+    /// use serde_jsonrc::Value;
     ///
     /// let s: String = "lorem".to_string();
     /// let x: Value = s.into();
@@ -98,7 +98,7 @@ impl<'a> From<&'a str> for Value {
     /// # Examples
     ///
     /// ```edition2018
-    /// use serde_json::Value;
+    /// use serde_jsonrc::Value;
     ///
     /// let s: &str = "lorem";
     /// let x: Value = s.into();
@@ -114,7 +114,7 @@ impl<'a> From<Cow<'a, str>> for Value {
     /// # Examples
     ///
     /// ```edition2018
-    /// use serde_json::Value;
+    /// use serde_jsonrc::Value;
     /// use std::borrow::Cow;
     ///
     /// let s: Cow<str> = Cow::Borrowed("lorem");
@@ -122,7 +122,7 @@ impl<'a> From<Cow<'a, str>> for Value {
     /// ```
     ///
     /// ```edition2018
-    /// use serde_json::Value;
+    /// use serde_jsonrc::Value;
     /// use std::borrow::Cow;
     ///
     /// let s: Cow<str> = Cow::Owned("lorem".to_string());
@@ -139,7 +139,7 @@ impl From<Map<String, Value>> for Value {
     /// # Examples
     ///
     /// ```edition2018
-    /// use serde_json::{Map, Value};
+    /// use serde_jsonrc::{Map, Value};
     ///
     /// let mut m = Map::new();
     /// m.insert("Lorem".to_string(), "ipsum".into());
@@ -156,7 +156,7 @@ impl<T: Into<Value>> From<Vec<T>> for Value {
     /// # Examples
     ///
     /// ```edition2018
-    /// use serde_json::Value;
+    /// use serde_jsonrc::Value;
     ///
     /// let v = vec!["lorem", "ipsum", "dolor"];
     /// let x: Value = v.into();
@@ -172,7 +172,7 @@ impl<'a, T: Clone + Into<Value>> From<&'a [T]> for Value {
     /// # Examples
     ///
     /// ```edition2018
-    /// use serde_json::Value;
+    /// use serde_jsonrc::Value;
     ///
     /// let v: &[&str] = &["lorem", "ipsum", "dolor"];
     /// let x: Value = v.into();
@@ -188,14 +188,14 @@ impl<T: Into<Value>> ::std::iter::FromIterator<T> for Value {
     /// # Examples
     ///
     /// ```edition2018
-    /// use serde_json::Value;
+    /// use serde_jsonrc::Value;
     ///
     /// let v = std::iter::repeat(42).take(5);
     /// let x: Value = v.collect();
     /// ```
     ///
     /// ```edition2018
-    /// use serde_json::Value;
+    /// use serde_jsonrc::Value;
     ///
     /// let v: Vec<_> = vec!["lorem", "ipsum", "dolor"];
     /// let x: Value = v.into_iter().collect();
@@ -203,7 +203,7 @@ impl<T: Into<Value>> ::std::iter::FromIterator<T> for Value {
     ///
     /// ```edition2018
     /// use std::iter::FromIterator;
-    /// use serde_json::Value;
+    /// use serde_jsonrc::Value;
     ///
     /// let x: Value = Value::from_iter(vec!["lorem", "ipsum", "dolor"]);
     /// ```
