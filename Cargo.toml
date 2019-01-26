@@ -1,7 +1,11 @@
 [package]
 name = "serde_jsonrc"
-version = "1.0.37" # remember to update html_root_url
-authors = ["Erick Tryzelaar <erick.tryzelaar@gmail.com>", "David Tolnay <dtolnay@gmail.com>"]
+version = "0.1.0" # remember to update html_root_url
+authors = [
+    "Michael Bolin <bolinfest@gmail.com",
+    "Erick Tryzelaar <erick.tryzelaar@gmail.com>",
+    "David Tolnay <dtolnay@gmail.com>",
+]
 license = "MIT/Apache-2.0"
 description = "A JSON serialization file format"
 repository = "https://github.com/serde-rs/json"
