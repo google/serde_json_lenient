@@ -1683,6 +1683,10 @@ impl<'de, 'a, R: Read<'de> + 'a> de::SeqAccess<'de> for SeqAccess<'a, R> {
             Some(b']') => Ok(None),
             Some(_) => {
                 let result = Ok(Some(try!(seed.deserialize(&mut *self.de))));
+                if !result.is_ok() {
+                    return result;
+                }
+
                 match try!(self.de.parse_whitespace()) {
                     Some(b',') => self.de.eat_char(),
                     Some(b']') => {
