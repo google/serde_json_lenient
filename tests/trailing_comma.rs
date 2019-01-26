@@ -42,12 +42,24 @@ enum Animal {
 }
 
 #[test]
-fn test_parse_enum_animal_and_no_other_test() {
+fn test_parse_enum_as_array_with_deny_unknown_fields() {
     let animal: Animal = from_str("{\"Cat\":[0, \"Kate\",]}").unwrap();
     assert_eq!(
         animal,
         Animal::Cat {
             age: 0,
+            name: "Kate".to_string()
+        }
+    );
+}
+
+#[test]
+fn test_parse_enum_as_object_with_deny_unknown_fields() {
+    let animal: Animal = from_str("{\"Cat\":{\"age\": 2, \"name\": \"Kate\",}}").unwrap();
+    assert_eq!(
+        animal,
+        Animal::Cat {
+            age: 2,
             name: "Kate".to_string()
         }
     );
