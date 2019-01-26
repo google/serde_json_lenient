@@ -2,7 +2,7 @@
 name = "serde_jsonrc"
 version = "0.1.0" # remember to update html_root_url
 authors = [
-    "Michael Bolin <bolinfest@gmail.com",
+    "Michael Bolin <bolinfest@gmail.com>",
     "Erick Tryzelaar <erick.tryzelaar@gmail.com>",
     "David Tolnay <dtolnay@gmail.com>",
 ]
