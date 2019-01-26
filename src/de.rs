@@ -1714,14 +1714,14 @@ impl<'de, 'a, R: Read<'de> + 'a> de::SeqAccess<'de> for SeqAccess<'a, R> {
 
 struct MapAccess<'a, R: 'a> {
     de: &'a mut Deserializer<R>,
-    first: bool,
+    saw_trailing_comma_from_previous_entry: bool,
 }
 
 impl<'a, R: 'a> MapAccess<'a, R> {
     fn new(de: &'a mut Deserializer<R>) -> Self {
         MapAccess {
             de: de,
-            first: true,
+            saw_trailing_comma_from_previous_entry: true,
         }
     }
 }
@@ -1737,27 +1737,41 @@ impl<'de, 'a, R: Read<'de> + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
             Some(b'}') => {
                 return Ok(None);
             }
-            Some(b',') if !self.first => {
-                self.de.eat_char();
-                try!(self.de.parse_whitespace())
-            }
-            Some(b) => {
-                if self.first {
-                    self.first = false;
-                    Some(b)
+            Some(b',') => {
+                if self.saw_trailing_comma_from_previous_entry {
+                    // We already saw the trailing comma we expected for the
+                    // previous entry (or this is a comma before the first entry).
+                    return Err(self.de.peek_error(ErrorCode::TrailingComma));
                 } else {
-                    return Err(self.de.peek_error(ErrorCode::ExpectedObjectCommaOrEnd));
+                    self.de.eat_char();
+                    self.saw_trailing_comma_from_previous_entry = true;
+                    try!(self.de.parse_whitespace())
                 }
             }
+            Some(b) => Some(b),
             None => {
                 return Err(self.de.peek_error(ErrorCode::EofWhileParsingObject));
             }
         };
 
         match peek {
-            Some(b'"') => seed.deserialize(MapKey { de: &mut *self.de }).map(Some),
-            Some(b'}') => Err(self.de.peek_error(ErrorCode::TrailingComma)),
-            Some(_) => Err(self.de.peek_error(ErrorCode::KeyMustBeAString)),
+            Some(b'"') => {
+                if self.saw_trailing_comma_from_previous_entry {
+                    seed.deserialize(MapKey { de: &mut *self.de }).map(Some)
+                } else {
+                    // TODO: Custom error for missing trailing comma.
+                    Err(self.de.peek_error(ErrorCode::TrailingComma))
+                }
+            }
+            Some(b'}') => return Ok(None),
+            Some(_) => {
+                if self.saw_trailing_comma_from_previous_entry {
+                    Err(self.de.peek_error(ErrorCode::KeyMustBeAString))
+                } else {
+                    // TODO: Custom error for missing trailing comma.
+                    Err(self.de.peek_error(ErrorCode::ExpectedObjectCommaOrEnd))
+                }
+            }
             None => Err(self.de.peek_error(ErrorCode::EofWhileParsingValue)),
         }
     }
@@ -1768,7 +1782,9 @@ impl<'de, 'a, R: Read<'de> + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
     {
         try!(self.de.parse_object_colon());
 
-        seed.deserialize(&mut *self.de)
+        let result = seed.deserialize(&mut *self.de);
+        self.saw_trailing_comma_from_previous_entry = false;
+        result
     }
 }
 
