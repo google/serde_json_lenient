@@ -7,7 +7,7 @@ authors = [
     "David Tolnay <dtolnay@gmail.com>",
 ]
 license = "MIT/Apache-2.0"
-description = "A JSON serialization file format"
+description = "A lenient JSON serialization file format"
 repository = "https://github.com/serde-rs/json"
 documentation = "http://docs.serde.rs/serde_jsonrc/"
 keywords = ["json", "serde", "serialization"]
