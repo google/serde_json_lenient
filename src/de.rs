@@ -177,10 +177,63 @@ impl<'de, R: Read<'de>> Deserializer<R> {
     /// Returns the first non-whitespace byte without consuming it, or `None` if
     /// EOF is encountered.
     fn parse_whitespace(&mut self) -> Result<Option<u8>> {
+        // Consume comments as if they were whitespace.
         loop {
             match try!(self.peek()) {
                 Some(b' ') | Some(b'\n') | Some(b'\t') | Some(b'\r') => {
                     self.eat_char();
+                }
+                Some(b'/') => {
+                    self.eat_char();
+                    match try!(self.peek()) {
+                        Some(b'/') => {
+                            // TODO: Read until newline.
+                            loop {
+                                match try!(self.peek()) {
+                                    Some(b'\n') => {
+                                        self.eat_char();
+                                        break;
+                                    }
+                                    Some(_) => {
+                                        self.eat_char();
+                                    }
+                                    None => {
+                                        return Ok(None);
+                                    }
+                                }
+                            }
+                        }
+                        Some(b'*') => loop {
+                            match try!(self.peek()) {
+                                Some(b'*') => {
+                                    self.eat_char();
+                                    match try!(self.peek()) {
+                                        Some(b'/') => {
+                                            self.eat_char();
+                                            break;
+                                        }
+                                        Some(_) => self.eat_char(),
+                                        None => {
+                                            return Err(self.peek_error(
+                                                ErrorCode::EofWhileParsingBlockComment,
+                                            ));
+                                        }
+                                    }
+                                }
+                                Some(_) => {
+                                    self.eat_char();
+                                }
+                                None => {
+                                    return Err(
+                                        self.peek_error(ErrorCode::EofWhileParsingBlockComment)
+                                    );
+                                }
+                            }
+                        },
+                        _ => {
+                            return Err(self.peek_error(ErrorCode::ExpectedCommentSlashOrStar));
+                        }
+                    };
                 }
                 other => {
                     return Ok(other);
@@ -338,11 +391,13 @@ impl<'de, R: Read<'de>> Deserializer<R> {
                             // number as a `u64` until we grow too large. At that point, switch to
                             // parsing the value as a `f64`.
                             if overflow!(res * 10 + digit, u64::max_value()) {
-                                return Ok(ParserNumber::F64(try!(self.parse_long_integer(
+                                return Ok(ParserNumber::F64(try!(
+                                    self.parse_long_integer(
                                     positive,
                                     res,
                                     1, // res * 10^1
-                                ))));
+                                )
+                                )));
                             }
 
                             res = res * 10 + digit;
