@@ -1,4 +1,13 @@
-//! # Serde JSON
+//! # Serde jsonrc
+//!
+//! **This crate is a fork of [Serde JSON](https://github.com/serde-rs/json)**
+//! that accepts a more lenient form of JSON. Specifically, it allows:
+//!
+//! - `/*` and `//` style comments.
+//! - Trailing commas for object and array literals.
+//!
+//! This is designed to make it easier to use JSON files that are maintained
+//! by hand, such as configuration files.
 //!
 //! JSON is a ubiquitous open-standard format that uses human-readable text to
 //! transmit data objects consisting of key-value pairs.
@@ -32,7 +41,7 @@
 //!    of your data to conform to a particular structure and want to get real
 //!    work done without JSON's loosey-goosey nature tripping you up.
 //!
-//! Serde JSON provides efficient, flexible, safe ways of converting data
+//! Serde jsonrc provides efficient, flexible, safe ways of converting data
 //! between each of these representations.
 //!
 //! # Operating on untyped JSON values
@@ -178,7 +187,7 @@
 //!
 //! # Constructing JSON values
 //!
-//! Serde JSON provides a [`json!` macro][macro] to build `serde_jsonrc::Value`
+//! Serde jsonrc provides a [`json!` macro][macro] to build `serde_jsonrc::Value`
 //! objects with very natural JSON syntax. In order to use this macro,
 //! `serde_jsonrc` needs to be imported with the `#[macro_use]` attribute.
 //!
@@ -231,7 +240,7 @@
 //!
 //! This is amazingly convenient but we have the problem we had before with
 //! `Value` which is that the IDE and Rust compiler cannot help us if we get it
-//! wrong. Serde JSON provides a better way of serializing strongly-typed data
+//! wrong. Serde jsonrc provides a better way of serializing strongly-typed data
 //! structures into JSON text.
 //!
 //! # Creating JSON by serializing data structures

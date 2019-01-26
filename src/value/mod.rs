@@ -2,7 +2,7 @@
 //!
 //! # Constructing JSON
 //!
-//! Serde JSON provides a [`json!` macro][macro] to build `serde_jsonrc::Value`
+//! Serde jsonrc provides a [`json!` macro][macro] to build `serde_jsonrc::Value`
 //! objects with very natural JSON syntax. In order to use this macro,
 //! `serde_jsonrc` needs to be imported with the `#[macro_use]` attribute.
 //!
