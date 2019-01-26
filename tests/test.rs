@@ -1054,7 +1054,7 @@ fn test_parse_list() {
         ("[ ", "EOF while parsing a list at line 1 column 2"),
         ("[1", "EOF while parsing a list at line 1 column 2"),
         ("[1,", "EOF while parsing a value at line 1 column 3"),
-        ("[1,]", "trailing comma at line 1 column 4"),
+        // ("[1,]", "trailing comma at line 1 column 4"),
         ("[1 2]", "expected `,` or `]` at line 1 column 4"),
         ("[]a", "trailing characters at line 1 column 3"),
     ]);

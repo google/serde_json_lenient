@@ -1664,14 +1664,14 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
 
 struct SeqAccess<'a, R: 'a> {
     de: &'a mut Deserializer<R>,
-    first: bool,
+    saw_trailing_comma_from_previous_entry: bool,
 }
 
 impl<'a, R: 'a> SeqAccess<'a, R> {
     fn new(de: &'a mut Deserializer<R>) -> Self {
         SeqAccess {
             de: de,
-            first: true,
+            saw_trailing_comma_from_previous_entry: true,
         }
     }
 }
@@ -1687,26 +1687,31 @@ impl<'de, 'a, R: Read<'de> + 'a> de::SeqAccess<'de> for SeqAccess<'a, R> {
             Some(b']') => {
                 return Ok(None);
             }
-            Some(b',') if !self.first => {
+            Some(b',') if !self.saw_trailing_comma_from_previous_entry => {
                 self.de.eat_char();
+                self.saw_trailing_comma_from_previous_entry = true;
                 try!(self.de.parse_whitespace())
             }
-            Some(b) => {
-                if self.first {
-                    self.first = false;
-                    Some(b)
-                } else {
-                    return Err(self.de.peek_error(ErrorCode::ExpectedListCommaOrEnd));
-                }
+            Some(b',') if self.saw_trailing_comma_from_previous_entry => {
+                return Err(self.de.peek_error(ErrorCode::TrailingComma));
             }
+            Some(b) => Some(b),
             None => {
                 return Err(self.de.peek_error(ErrorCode::EofWhileParsingList));
             }
         };
 
         match peek {
-            Some(b']') => Err(self.de.peek_error(ErrorCode::TrailingComma)),
-            Some(_) => Ok(Some(try!(seed.deserialize(&mut *self.de)))),
+            Some(b']') => return Ok(None),
+            Some(_) => {
+                if self.saw_trailing_comma_from_previous_entry {
+                    let result = Ok(Some(try!(seed.deserialize(&mut *self.de))));
+                    self.saw_trailing_comma_from_previous_entry = false;
+                    result
+                } else {
+                    Err(self.de.peek_error(ErrorCode::ExpectedListCommaOrEnd))
+                }
+            }
             None => Err(self.de.peek_error(ErrorCode::EofWhileParsingValue)),
         }
     }

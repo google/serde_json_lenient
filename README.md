@@ -6,7 +6,7 @@ that is that is designed to parse JSON written by humans
 (e.g., JSON config files). This means that it supports:
 
 - `/*` and `//` style comments.
-- [planned] Trailing commas for object and array literals.
+- Trailing commas for object and array literals.
 - [planned] Unquoted object keys (precise spec TBD).
 
 I am still playing with the idea of making it more lenient,
