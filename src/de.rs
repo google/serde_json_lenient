@@ -1664,15 +1664,11 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
 
 struct SeqAccess<'a, R: 'a> {
     de: &'a mut Deserializer<R>,
-    saw_trailing_comma_from_previous_entry: bool,
 }
 
 impl<'a, R: 'a> SeqAccess<'a, R> {
     fn new(de: &'a mut Deserializer<R>) -> Self {
-        SeqAccess {
-            de: de,
-            saw_trailing_comma_from_previous_entry: true,
-        }
+        SeqAccess { de }
     }
 }
 
@@ -1683,36 +1679,25 @@ impl<'de, 'a, R: Read<'de> + 'a> de::SeqAccess<'de> for SeqAccess<'a, R> {
     where
         T: de::DeserializeSeed<'de>,
     {
-        let peek = match try!(self.de.parse_whitespace()) {
-            Some(b']') => {
-                return Ok(None);
-            }
-            Some(b',') if !self.saw_trailing_comma_from_previous_entry => {
-                self.de.eat_char();
-                self.saw_trailing_comma_from_previous_entry = true;
-                try!(self.de.parse_whitespace())
-            }
-            Some(b',') if self.saw_trailing_comma_from_previous_entry => {
-                return Err(self.de.peek_error(ErrorCode::TrailingComma));
-            }
-            Some(b) => Some(b),
-            None => {
-                return Err(self.de.peek_error(ErrorCode::EofWhileParsingList));
-            }
-        };
-
-        match peek {
-            Some(b']') => return Ok(None),
+        match try!(self.de.parse_whitespace()) {
+            Some(b']') => Ok(None),
             Some(_) => {
-                if self.saw_trailing_comma_from_previous_entry {
-                    let result = Ok(Some(try!(seed.deserialize(&mut *self.de))));
-                    self.saw_trailing_comma_from_previous_entry = false;
-                    result
-                } else {
-                    Err(self.de.peek_error(ErrorCode::ExpectedListCommaOrEnd))
+                let result = Ok(Some(try!(seed.deserialize(&mut *self.de))));
+                match try!(self.de.parse_whitespace()) {
+                    Some(b',') => self.de.eat_char(),
+                    Some(b']') => {
+                        // Ignore.
+                    }
+                    Some(_) => {
+                        return Err(self.de.peek_error(ErrorCode::ExpectedListCommaOrEnd));
+                    }
+                    None => {
+                        return Err(self.de.peek_error(ErrorCode::EofWhileParsingList));
+                    }
                 }
+                result
             }
-            None => Err(self.de.peek_error(ErrorCode::EofWhileParsingValue)),
+            None => Err(self.de.peek_error(ErrorCode::EofWhileParsingList)),
         }
     }
 }
