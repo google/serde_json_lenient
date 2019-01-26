@@ -19,6 +19,28 @@ fn test_trailing_comma_object() {
 }
 
 #[test]
+fn test_double_comma_object() {
+    let s = r#"
+    {
+        "key1": "value1",,
+        "key2": "value2"
+    }"#;
+    let actual = from_str::<Value>(s).unwrap_err().to_string();
+    assert_eq!(actual, "key must be a string at line 3 column 26");
+}
+
+#[test]
+fn test_double_trailing_comma_object() {
+    let s = r#"
+    {
+        "key1": "value1",
+        "key2": "value2",,
+    }"#;
+    let actual = from_str::<Value>(s).unwrap_err().to_string();
+    assert_eq!(actual, "key must be a string at line 4 column 26");
+}
+
+#[test]
 fn test_trailing_comma_array() {
     let s = r#"
     {
@@ -30,6 +52,32 @@ fn test_trailing_comma_array() {
     }"#;
     let value: Value = from_str(s).unwrap();
     assert_eq!(value, json!({"key": ["one", "two", "three"]}));
+}
+
+#[test]
+fn test_double_comma_array() {
+    let s = r#"
+    {
+        "key": [
+            "one",,
+            "two",
+        ]
+    }"#;
+    let actual = from_str::<Value>(s).unwrap_err().to_string();
+    assert_eq!(actual, "expected value at line 4 column 19");
+}
+
+#[test]
+fn test_double_trailing_comma_array() {
+    let s = r#"
+    {
+        "key": [
+            "one",
+            "two",,
+        ]
+    }"#;
+    let actual = from_str::<Value>(s).unwrap_err().to_string();
+    assert_eq!(actual, "expected value at line 5 column 19");
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
