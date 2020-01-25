@@ -20,10 +20,19 @@ use error::Error;
 /// When serializing, a value of this type will retain its original formatting
 /// and will not be minified or pretty-printed.
 ///
+/// # Note
+///
+/// `RawValue` is only available if serde\_json is built with the `"raw_value"`
+/// feature.
+///
+/// ```toml
+/// [dependencies]
+/// serde_json = { version = "1.0", features = ["raw_value"] }
+/// ```
+///
 /// # Example
 ///
 /// ```edition2018
-/// # use serde_derive::{Deserialize, Serialize};
 /// use serde::{Deserialize, Serialize};
 /// use serde_jsonrc::{Result, value::RawValue};
 ///
@@ -43,7 +52,7 @@ use error::Error;
 /// // keys into a single "info" key holding an array of code and payload.
 /// //
 /// // This could be done equivalently using serde_jsonrc::Value as the type for
-/// // payload, but &RawValue will perform netter because it does not require
+/// // payload, but &RawValue will perform better because it does not require
 /// // memory allocation. The correct range of bytes is borrowed from the input
 /// // data and pasted verbatim into the output.
 /// fn rearrange(input: &str) -> Result<String> {
@@ -70,7 +79,7 @@ use error::Error;
 /// The typical usage of `RawValue` will be in the borrowed form:
 ///
 /// ```edition2018
-/// # use serde_derive::Deserialize;
+/// # use serde::Deserialize;
 /// # use serde_jsonrc::value::RawValue;
 /// #
 /// #[derive(Deserialize)]
@@ -81,7 +90,7 @@ use error::Error;
 /// ```
 ///
 /// The borrowed form is suitable when deserializing through
-/// [`serde_jsonrc::from_str`] and [`serde_json::from_slice`] which support
+/// [`serde_jsonrc::from_str`] and [`serde_jsonrc::from_slice`] which support
 /// borrowing from the input data without memory allocation.
 ///
 /// When deserializing through [`serde_jsonrc::from_reader`] you will need to use
@@ -93,23 +102,13 @@ use error::Error;
 /// [`serde_jsonrc::from_reader`]: ../fn.from_reader.html
 ///
 /// ```edition2018
-/// # use serde_derive::Deserialize;
+/// # use serde::Deserialize;
 /// # use serde_jsonrc::value::RawValue;
 /// #
 /// #[derive(Deserialize)]
 /// struct SomeStruct {
 ///     raw_value: Box<RawValue>,
 /// }
-/// ```
-///
-/// # Note
-///
-/// `RawValue` is only available if serde\_json is built with the `"raw_value"`
-/// feature.
-///
-/// ```toml
-/// [dependencies]
-/// serde_jsonrc = { version = "1.0", features = ["raw_value"] }
 /// ```
 #[repr(C)]
 pub struct RawValue {
@@ -185,7 +184,6 @@ impl RawValue {
     /// # Example
     ///
     /// ```edition2018
-    /// # use serde_derive::Deserialize;
     /// use serde::Deserialize;
     /// use serde_jsonrc::{Result, value::RawValue};
     ///

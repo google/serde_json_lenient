@@ -3,8 +3,7 @@
 //! # Constructing JSON
 //!
 //! Serde jsonrc provides a [`json!` macro][macro] to build `serde_jsonrc::Value`
-//! objects with very natural JSON syntax. In order to use this macro,
-//! `serde_jsonrc` needs to be imported with the `#[macro_use]` attribute.
+//! objects with very natural JSON syntax.
 //!
 //! ```edition2018
 //! use serde_jsonrc::json;
@@ -83,9 +82,7 @@
 //!     Ok(())
 //! }
 //! #
-//! # fn main() {
-//! #     untyped_example().unwrap();
-//! # }
+//! # untyped_example().unwrap();
 //! ```
 //!
 //! [macro]: https://docs.serde.rs/serde_jsonrc/macro.json.html
@@ -865,7 +862,7 @@ impl Value {
 /// # Examples
 ///
 /// ```edition2018
-/// # use serde_derive::Deserialize;
+/// # use serde::Deserialize;
 /// use serde_jsonrc::Value;
 ///
 /// #[derive(Deserialize)]
@@ -885,9 +882,7 @@ impl Value {
 /// #     Ok(())
 /// # }
 /// #
-/// # fn main() {
-/// #     try_main().unwrap()
-/// # }
+/// # try_main().unwrap()
 /// ```
 impl Default for Value {
     fn default() -> Value {
@@ -907,7 +902,6 @@ mod ser;
 /// # Example
 ///
 /// ```edition2018
-/// # use serde_derive::Serialize;
 /// use serde::Serialize;
 /// use serde_jsonrc::json;
 ///
@@ -937,9 +931,7 @@ mod ser;
 ///     Ok(())
 /// }
 /// #
-/// # fn main() {
-/// #     compare_json_values().unwrap();
-/// # }
+/// # compare_json_values().unwrap();
 /// ```
 ///
 /// # Errors
@@ -972,7 +964,6 @@ where
 /// # Example
 ///
 /// ```edition2018
-/// # use serde_derive::Deserialize;
 /// use serde::Deserialize;
 /// use serde_jsonrc::json;
 ///
