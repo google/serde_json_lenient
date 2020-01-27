@@ -23,7 +23,15 @@ fn test_parse_block_comments() {
     {
         /* And one in here. */
         "key": "value"
-    }/* Some at the end... *//* ...back to back! */"#;
+    }/* Some at the end... *//* ...back to *** back! */ /* Two trailing asterisk **/"#;
+    let value: Value = from_str(s).unwrap();
+    assert_eq!(value, json!({"key": "value"}));
+}
+
+#[test]
+fn test_parse_block_comments_before_value() {
+    let s = r#"
+    /* foo **/{"key": "value"}"#;
     let value: Value = from_str(s).unwrap();
     assert_eq!(value, json!({"key": "value"}));
 }
