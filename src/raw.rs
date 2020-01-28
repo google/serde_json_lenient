@@ -1,14 +1,12 @@
-use std::fmt::{self, Debug, Display};
-use std::mem;
-
+use crate::error::Error;
+use crate::lib::*;
 use serde::de::value::BorrowedStrDeserializer;
 use serde::de::{
     self, Deserialize, DeserializeSeed, Deserializer, IntoDeserializer, MapAccess, Unexpected,
     Visitor,
 };
+use serde::forward_to_deserialize_any;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
-
-use error::Error;
 
 /// Reference to a range of bytes encompassing a single valid JSON value in the
 /// input data.
@@ -32,7 +30,7 @@ use error::Error;
 ///
 /// # Example
 ///
-/// ```edition2018
+/// ```
 /// use serde::{Deserialize, Serialize};
 /// use serde_jsonrc::{Result, value::RawValue};
 ///
@@ -78,7 +76,7 @@ use error::Error;
 ///
 /// The typical usage of `RawValue` will be in the borrowed form:
 ///
-/// ```edition2018
+/// ```
 /// # use serde::Deserialize;
 /// # use serde_jsonrc::value::RawValue;
 /// #
@@ -101,7 +99,7 @@ use error::Error;
 /// [`serde_jsonrc::from_slice`]: ../fn.from_slice.html
 /// [`serde_jsonrc::from_reader`]: ../fn.from_reader.html
 ///
-/// ```edition2018
+/// ```
 /// # use serde::Deserialize;
 /// # use serde_jsonrc::value::RawValue;
 /// #
@@ -171,7 +169,7 @@ impl RawValue {
     /// - the input has capacity equal to its length.
     pub fn from_string(json: String) -> Result<Box<Self>, Error> {
         {
-            let borrowed = ::from_str::<&Self>(&json)?;
+            let borrowed = crate::from_str::<&Self>(&json)?;
             if borrowed.json.len() < json.len() {
                 return Ok(borrowed.to_owned());
             }
@@ -183,7 +181,7 @@ impl RawValue {
     ///
     /// # Example
     ///
-    /// ```edition2018
+    /// ```
     /// use serde::Deserialize;
     /// use serde_jsonrc::{Result, value::RawValue};
     ///
@@ -217,7 +215,7 @@ impl RawValue {
     }
 }
 
-pub const TOKEN: &'static str = "$serde_jsonrc::private::RawValue";
+pub const TOKEN: &str = "$serde_jsonrc::private::RawValue";
 
 impl Serialize for RawValue {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

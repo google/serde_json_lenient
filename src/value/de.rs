@@ -1,24 +1,17 @@
-use std::borrow::Cow;
-use std::fmt;
-use std::slice;
-use std::str;
-use std::vec;
-
-use serde;
+use crate::error::Error;
+use crate::lib::str::FromStr;
+use crate::lib::*;
+use crate::map::Map;
+use crate::number::Number;
+use crate::value::Value;
 use serde::de::{
-    Deserialize, DeserializeSeed, EnumAccess, Expected, IntoDeserializer, MapAccess, SeqAccess,
-    Unexpected, VariantAccess, Visitor,
+    self, Deserialize, DeserializeSeed, EnumAccess, Expected, IntoDeserializer, MapAccess,
+    SeqAccess, Unexpected, VariantAccess, Visitor,
 };
-
-use error::Error;
-use map::Map;
-use number::Number;
-use value::Value;
-
-use serde::de;
+use serde::{forward_to_deserialize_any, serde_if_integer128};
 
 #[cfg(feature = "arbitrary_precision")]
-use number::NumberFromString;
+use crate::number::NumberFromString;
 
 impl<'de> Deserialize<'de> for Value {
     #[inline]
@@ -93,7 +86,7 @@ impl<'de> Deserialize<'de> for Value {
             {
                 let mut vec = Vec::new();
 
-                while let Some(elem) = try!(visitor.next_element()) {
+                while let Some(elem) = tri!(visitor.next_element()) {
                     vec.push(elem);
                 }
 
@@ -112,14 +105,14 @@ impl<'de> Deserialize<'de> for Value {
                     }
                     #[cfg(feature = "raw_value")]
                     Some(KeyClass::RawValue) => {
-                        let value = visitor.next_value_seed(::raw::BoxedFromString)?;
-                        ::from_str(value.get()).map_err(de::Error::custom)
+                        let value = visitor.next_value_seed(crate::raw::BoxedFromString)?;
+                        crate::from_str(value.get()).map_err(de::Error::custom)
                     }
                     Some(KeyClass::Map(first_key)) => {
                         let mut values = Map::new();
 
-                        values.insert(first_key, try!(visitor.next_value()));
-                        while let Some((key, value)) = try!(visitor.next_entry()) {
+                        values.insert(first_key, tri!(visitor.next_value()));
+                        while let Some((key, value)) = tri!(visitor.next_entry()) {
                             values.insert(key, value);
                         }
 
@@ -134,7 +127,7 @@ impl<'de> Deserialize<'de> for Value {
     }
 }
 
-impl str::FromStr for Value {
+impl FromStr for Value {
     type Err = Error;
     fn from_str(s: &str) -> Result<Value, Error> {
         super::super::de::from_str(s)
@@ -173,7 +166,7 @@ where
 {
     let len = array.len();
     let mut deserializer = SeqDeserializer::new(array);
-    let seq = try!(visitor.visit_seq(&mut deserializer));
+    let seq = tri!(visitor.visit_seq(&mut deserializer));
     let remaining = deserializer.iter.len();
     if remaining == 0 {
         Ok(seq)
@@ -191,7 +184,7 @@ where
 {
     let len = object.len();
     let mut deserializer = MapDeserializer::new(object);
-    let map = try!(visitor.visit_map(&mut deserializer));
+    let map = tri!(visitor.visit_map(&mut deserializer));
     let remaining = deserializer.iter.len();
     if remaining == 0 {
         Ok(map)
@@ -305,8 +298,8 @@ impl<'de> serde::Deserializer<'de> for Value {
     {
         #[cfg(feature = "raw_value")]
         {
-            if name == ::raw::TOKEN {
-                return visitor.visit_map(::raw::OwnedRawDeserializer {
+            if name == crate::raw::TOKEN {
+                return visitor.visit_map(crate::raw::OwnedRawDeserializer {
                     raw_value: Some(self.to_string()),
                 });
             }
@@ -581,7 +574,7 @@ impl<'de> serde::Deserializer<'de> for SeqDeserializer {
         if len == 0 {
             visitor.visit_unit()
         } else {
-            let ret = try!(visitor.visit_seq(&mut self));
+            let ret = tri!(visitor.visit_seq(&mut self));
             let remaining = self.iter.len();
             if remaining == 0 {
                 Ok(ret)
@@ -723,7 +716,7 @@ where
 {
     let len = array.len();
     let mut deserializer = SeqRefDeserializer::new(array);
-    let seq = try!(visitor.visit_seq(&mut deserializer));
+    let seq = tri!(visitor.visit_seq(&mut deserializer));
     let remaining = deserializer.iter.len();
     if remaining == 0 {
         Ok(seq)
@@ -741,7 +734,7 @@ where
 {
     let len = object.len();
     let mut deserializer = MapRefDeserializer::new(object);
-    let map = try!(visitor.visit_map(&mut deserializer));
+    let map = tri!(visitor.visit_map(&mut deserializer));
     let remaining = deserializer.iter.len();
     if remaining == 0 {
         Ok(map)
@@ -852,8 +845,8 @@ impl<'de> serde::Deserializer<'de> for &'de Value {
     {
         #[cfg(feature = "raw_value")]
         {
-            if name == ::raw::TOKEN {
-                return visitor.visit_map(::raw::OwnedRawDeserializer {
+            if name == crate::raw::TOKEN {
+                return visitor.visit_map(crate::raw::OwnedRawDeserializer {
                     raw_value: Some(self.to_string()),
                 });
             }
@@ -1117,7 +1110,7 @@ impl<'de> serde::Deserializer<'de> for SeqRefDeserializer<'de> {
         if len == 0 {
             visitor.visit_unit()
         } else {
-            let ret = try!(visitor.visit_seq(&mut self));
+            let ret = tri!(visitor.visit_seq(&mut self));
             let remaining = self.iter.len();
             if remaining == 0 {
                 Ok(ret)
@@ -1345,9 +1338,9 @@ impl<'de> Visitor<'de> for KeyClassifier {
     {
         match s {
             #[cfg(feature = "arbitrary_precision")]
-            ::number::TOKEN => Ok(KeyClass::Number),
+            crate::number::TOKEN => Ok(KeyClass::Number),
             #[cfg(feature = "raw_value")]
-            ::raw::TOKEN => Ok(KeyClass::RawValue),
+            crate::raw::TOKEN => Ok(KeyClass::RawValue),
             _ => Ok(KeyClass::Map(s.to_owned())),
         }
     }
@@ -1358,9 +1351,9 @@ impl<'de> Visitor<'de> for KeyClassifier {
     {
         match s.as_str() {
             #[cfg(feature = "arbitrary_precision")]
-            ::number::TOKEN => Ok(KeyClass::Number),
+            crate::number::TOKEN => Ok(KeyClass::Number),
             #[cfg(feature = "raw_value")]
-            ::raw::TOKEN => Ok(KeyClass::RawValue),
+            crate::raw::TOKEN => Ok(KeyClass::RawValue),
             _ => Ok(KeyClass::Map(s)),
         }
     }
@@ -1368,7 +1361,7 @@ impl<'de> Visitor<'de> for KeyClassifier {
 
 impl Value {
     #[cold]
-    fn invalid_type<E>(&self, exp: &Expected) -> E
+    fn invalid_type<E>(&self, exp: &dyn Expected) -> E
     where
         E: serde::de::Error,
     {

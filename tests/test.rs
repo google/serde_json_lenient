@@ -1,20 +1,20 @@
 #![cfg(not(feature = "preserve_order"))]
-#![cfg_attr(feature = "cargo-clippy", allow(float_cmp, unreadable_literal))]
+#![allow(clippy::float_cmp, clippy::unreadable_literal)]
 #![cfg_attr(feature = "trace-macros", feature(trace_macros))]
 #[cfg(feature = "trace-macros")]
 trace_macros!(true);
 
 #[macro_use]
-extern crate serde_derive;
-
-extern crate serde;
-extern crate serde_bytes;
-#[macro_use]
-extern crate serde_jsonrc;
-
-#[macro_use]
 mod macros;
 
+use serde::de::{self, IgnoredAny, IntoDeserializer};
+use serde::ser::{self, Serializer};
+use serde::{Deserialize, Serialize};
+use serde_bytes::{ByteBuf, Bytes};
+use serde_jsonrc::{
+    from_reader, from_slice, from_str, from_value, json, to_string, to_string_pretty, to_value,
+    to_vec, to_writer, Deserializer, Number, Value,
+};
 use std::collections::BTreeMap;
 use std::fmt::{self, Debug};
 use std::io;
@@ -25,16 +25,6 @@ use std::string::ToString;
 use std::{f32, f64};
 use std::{i16, i32, i64, i8};
 use std::{u16, u32, u64, u8};
-
-use serde::de::{self, Deserialize, IgnoredAny, IntoDeserializer};
-use serde::ser::{self, Serialize, Serializer};
-
-use serde_bytes::{ByteBuf, Bytes};
-
-use serde_jsonrc::{
-    from_reader, from_slice, from_str, from_value, to_string, to_string_pretty, to_value, to_vec,
-    to_writer, Deserializer, Number, Value,
-};
 
 macro_rules! treemap {
     () => {
@@ -2000,7 +1990,7 @@ fn test_category() {
 
 #[test]
 // Clippy false positive: https://github.com/Manishearth/rust-clippy/issues/292
-#[cfg_attr(feature = "cargo-clippy", allow(needless_lifetimes))]
+#[allow(clippy::needless_lifetimes)]
 fn test_into_io_error() {
     fn io_error<'de, T: Deserialize<'de> + Debug>(j: &'static str) -> io::Error {
         from_str::<T>(j).unwrap_err().into()

@@ -1,15 +1,18 @@
-use std::ops::Deref;
-use std::{char, cmp, io, str};
+use crate::error::{Error, ErrorCode, Result};
+use crate::lib::ops::Deref;
+use crate::lib::*;
 
+#[cfg(feature = "std")]
+use crate::io;
+#[cfg(feature = "std")]
+use crate::iter::LineColIterator;
+
+#[cfg(feature = "raw_value")]
+use crate::raw::BorrowedRawDeserializer;
+#[cfg(all(feature = "raw_value", feature = "std"))]
+use crate::raw::OwnedRawDeserializer;
 #[cfg(feature = "raw_value")]
 use serde::de::Visitor;
-
-use iter::LineColIterator;
-
-use error::{Error, ErrorCode, Result};
-
-#[cfg(feature = "raw_value")]
-use raw::{BorrowedRawDeserializer, OwnedRawDeserializer};
 
 /// Trait used by the deserializer for iterating over input. This is manually
 /// "specialized" for iterating over &[u8]. Once feature(specialization) is
@@ -118,6 +121,7 @@ impl<'b, 'c, T: ?Sized + 'static> Deref for Reference<'b, 'c, T> {
 }
 
 /// JSON input source that reads from a std::io input stream.
+#[cfg(feature = "std")]
 pub struct IoRead<R>
 where
     R: io::Read,
@@ -157,6 +161,7 @@ mod private {
 
 //////////////////////////////////////////////////////////////////////////////
 
+#[cfg(feature = "std")]
 impl<R> IoRead<R>
 where
     R: io::Read,
@@ -181,8 +186,10 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<R> private::Sealed for IoRead<R> where R: io::Read {}
 
+#[cfg(feature = "std")]
 impl<R> IoRead<R>
 where
     R: io::Read,
@@ -198,7 +205,7 @@ where
         F: FnOnce(&'s Self, &'s [u8]) -> Result<T>,
     {
         loop {
-            let ch = try!(next_or_eof(self));
+            let ch = tri!(next_or_eof(self));
             if !ESCAPE[ch as usize] {
                 scratch.push(ch);
                 continue;
@@ -208,7 +215,7 @@ where
                     return result(self, scratch);
                 }
                 b'\\' => {
-                    try!(parse_escape(self, scratch));
+                    tri!(parse_escape(self, scratch));
                 }
                 _ => {
                     if validate {
@@ -221,6 +228,7 @@ where
     }
 }
 
+#[cfg(feature = "std")]
 impl<'de, R> Read<'de> for IoRead<R>
 where
     R: io::Read,
@@ -318,7 +326,7 @@ where
 
     fn ignore_str(&mut self) -> Result<()> {
         loop {
-            let ch = try!(next_or_eof(self));
+            let ch = tri!(next_or_eof(self));
             if !ESCAPE[ch as usize] {
                 continue;
             }
@@ -327,7 +335,7 @@ where
                     return Ok(());
                 }
                 b'\\' => {
-                    try!(ignore_escape(self));
+                    tri!(ignore_escape(self));
                 }
                 _ => {
                     return error(self, ErrorCode::ControlCharacterWhileParsingString);
@@ -339,7 +347,7 @@ where
     fn decode_hex_escape(&mut self) -> Result<u16> {
         let mut n = 0;
         for _ in 0..4 {
-            match decode_hex_val(try!(next_or_eof(self))) {
+            match decode_hex_val(tri!(next_or_eof(self))) {
                 None => return error(self, ErrorCode::InvalidEscape),
                 Some(val) => {
                     n = (n << 4) + val;
@@ -445,7 +453,7 @@ impl<'a> SliceRead<'a> {
                 b'\\' => {
                     scratch.extend_from_slice(&self.slice[start..self.index]);
                     self.index += 1;
-                    try!(parse_escape(self, scratch));
+                    tri!(parse_escape(self, scratch));
                     start = self.index;
                 }
                 _ => {
@@ -531,7 +539,7 @@ impl<'a> Read<'a> for SliceRead<'a> {
                 }
                 b'\\' => {
                     self.index += 1;
-                    try!(ignore_escape(self));
+                    tri!(ignore_escape(self));
                 }
                 _ => {
                     return error(self, ErrorCode::ControlCharacterWhileParsingString);
@@ -674,7 +682,7 @@ impl<'a> Read<'a> for StrRead<'a> {
 // Lookup table of bytes that must be escaped. A value of true at index i means
 // that byte i requires an escape sequence in the input.
 static ESCAPE: [bool; 256] = {
-    const CT: bool = true; // control character \x00...\x1F
+    const CT: bool = true; // control character \x00..=\x1F
     const QU: bool = true; // quote \x22
     const BS: bool = true; // backslash \x5C
     const __: bool = false; // allow unescaped
@@ -700,7 +708,7 @@ static ESCAPE: [bool; 256] = {
 };
 
 fn next_or_eof<'de, R: ?Sized + Read<'de>>(read: &mut R) -> Result<u8> {
-    match try!(read.next()) {
+    match tri!(read.next()) {
         Some(b) => Ok(b),
         None => error(read, ErrorCode::EofWhileParsingString),
     }
@@ -718,7 +726,7 @@ fn as_str<'de, 's, R: Read<'de>>(read: &R, slice: &'s [u8]) -> Result<&'s str> {
 /// Parses a JSON escape sequence and appends it into the scratch space. Assumes
 /// the previous byte read was a backslash.
 fn parse_escape<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) -> Result<()> {
-    let ch = try!(next_or_eof(read));
+    let ch = tri!(next_or_eof(read));
 
     match ch {
         b'"' => scratch.push(b'"'),
@@ -730,22 +738,22 @@ fn parse_escape<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) -> Resul
         b'r' => scratch.push(b'\r'),
         b't' => scratch.push(b'\t'),
         b'u' => {
-            let c = match try!(read.decode_hex_escape()) {
-                0xDC00...0xDFFF => {
+            let c = match tri!(read.decode_hex_escape()) {
+                0xDC00..=0xDFFF => {
                     return error(read, ErrorCode::LoneLeadingSurrogateInHexEscape);
                 }
 
                 // Non-BMP characters are encoded as a sequence of
                 // two hex escapes, representing UTF-16 surrogates.
-                n1 @ 0xD800...0xDBFF => {
-                    if try!(next_or_eof(read)) != b'\\' {
+                n1 @ 0xD800..=0xDBFF => {
+                    if tri!(next_or_eof(read)) != b'\\' {
                         return error(read, ErrorCode::UnexpectedEndOfHexEscape);
                     }
-                    if try!(next_or_eof(read)) != b'u' {
+                    if tri!(next_or_eof(read)) != b'u' {
                         return error(read, ErrorCode::UnexpectedEndOfHexEscape);
                     }
 
-                    let n2 = try!(read.decode_hex_escape());
+                    let n2 = tri!(read.decode_hex_escape());
 
                     if n2 < 0xDC00 || n2 > 0xDFFF {
                         return error(read, ErrorCode::LoneLeadingSurrogateInHexEscape);
@@ -782,27 +790,27 @@ fn parse_escape<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) -> Resul
 /// Parses a JSON escape sequence and discards the value. Assumes the previous
 /// byte read was a backslash.
 fn ignore_escape<'de, R: ?Sized + Read<'de>>(read: &mut R) -> Result<()> {
-    let ch = try!(next_or_eof(read));
+    let ch = tri!(next_or_eof(read));
 
     match ch {
         b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => {}
         b'u' => {
-            let n = match try!(read.decode_hex_escape()) {
-                0xDC00...0xDFFF => {
+            let n = match tri!(read.decode_hex_escape()) {
+                0xDC00..=0xDFFF => {
                     return error(read, ErrorCode::LoneLeadingSurrogateInHexEscape);
                 }
 
                 // Non-BMP characters are encoded as a sequence of
                 // two hex escapes, representing UTF-16 surrogates.
-                n1 @ 0xD800...0xDBFF => {
-                    if try!(next_or_eof(read)) != b'\\' {
+                n1 @ 0xD800..=0xDBFF => {
+                    if tri!(next_or_eof(read)) != b'\\' {
                         return error(read, ErrorCode::UnexpectedEndOfHexEscape);
                     }
-                    if try!(next_or_eof(read)) != b'u' {
+                    if tri!(next_or_eof(read)) != b'u' {
                         return error(read, ErrorCode::UnexpectedEndOfHexEscape);
                     }
 
-                    let n2 = try!(read.decode_hex_escape());
+                    let n2 = tri!(read.decode_hex_escape());
 
                     if n2 < 0xDC00 || n2 > 0xDFFF {
                         return error(read, ErrorCode::LoneLeadingSurrogateInHexEscape);

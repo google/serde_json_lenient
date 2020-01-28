@@ -1,8 +1,6 @@
-use std::fmt;
-use std::ops;
-
 use super::Value;
-use map::Map;
+use crate::lib::*;
+use crate::map::Map;
 
 /// A type that can be used to index into a `serde_jsonrc::Value`.
 ///
@@ -20,7 +18,7 @@ use map::Map;
 ///
 /// # Examples
 ///
-/// ```edition2018
+/// ```
 /// # use serde_jsonrc::json;
 /// #
 /// let data = json!({ "inner": [1, 2, 3] });
@@ -135,7 +133,7 @@ mod private {
     pub trait Sealed {}
     impl Sealed for usize {}
     impl Sealed for str {}
-    impl Sealed for String {}
+    impl Sealed for super::String {}
     impl<'a, T: ?Sized> Sealed for &'a T where T: Sealed {}
 }
 
@@ -193,7 +191,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```edition2018
+    /// ```
     /// # use serde_jsonrc::json;
     /// #
     /// let data = json!({
@@ -232,7 +230,7 @@ where
     ///
     /// # Examples
     ///
-    /// ```edition2018
+    /// ```
     /// # use serde_jsonrc::json;
     /// #
     /// let mut data = json!({ "x": 0 });
