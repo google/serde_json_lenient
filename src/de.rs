@@ -279,7 +279,7 @@ impl<'de, R: Read<'de>> Deserializer<R> {
                                             self.eat_char();
                                             break;
                                         }
-                                        Some(_) => self.eat_char(),
+                                        Some(_) => {},
                                         None => {
                                             return Err(self.peek_error(
                                                 ErrorCode::EofWhileParsingBlockComment,
