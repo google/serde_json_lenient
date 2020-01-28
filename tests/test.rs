@@ -26,7 +26,7 @@ use std::{f32, f64};
 use std::{i16, i32, i64, i8};
 use std::{u16, u32, u64, u8};
 
-use serde::de::{self, Deserialize, IgnoredAny};
+use serde::de::{self, Deserialize, IgnoredAny, IntoDeserializer};
 use serde::ser::{self, Serialize, Serializer};
 
 use serde_bytes::{ByteBuf, Bytes};
@@ -737,15 +737,15 @@ fn test_parse_number_errors() {
     test_parse_err::<f64>(&[
         ("+", "expected value at line 1 column 1"),
         (".", "expected value at line 1 column 1"),
-        ("-", "invalid number at line 1 column 1"),
+        ("-", "EOF while parsing a value at line 1 column 1"),
         ("00", "invalid number at line 1 column 2"),
         ("0x80", "trailing characters at line 1 column 2"),
         ("\\0", "expected value at line 1 column 1"),
-        ("1.", "invalid number at line 1 column 2"),
+        ("1.", "EOF while parsing a value at line 1 column 2"),
         ("1.a", "invalid number at line 1 column 3"),
         ("1.e1", "invalid number at line 1 column 3"),
-        ("1e", "invalid number at line 1 column 2"),
-        ("1e+", "invalid number at line 1 column 3"),
+        ("1e", "EOF while parsing a value at line 1 column 2"),
+        ("1e+", "EOF while parsing a value at line 1 column 3"),
         ("1a", "trailing characters at line 1 column 2"),
         (
             "100e777777777777777777777777777",
@@ -1388,9 +1388,9 @@ fn test_serialize_seq_with_no_len() {
             S: ser::Serializer,
         {
             use serde::ser::SerializeSeq;
-            let mut seq = try!(serializer.serialize_seq(None));
+            let mut seq = serializer.serialize_seq(None)?;
             for elem in &self.0 {
-                try!(seq.serialize_element(elem));
+                seq.serialize_element(elem)?;
             }
             seq.end()
         }
@@ -1425,7 +1425,7 @@ fn test_serialize_seq_with_no_len() {
         {
             let mut values = Vec::new();
 
-            while let Some(value) = try!(visitor.next_element()) {
+            while let Some(value) = visitor.next_element()? {
                 values.push(value);
             }
 
@@ -1475,10 +1475,10 @@ fn test_serialize_map_with_no_len() {
             S: ser::Serializer,
         {
             use serde::ser::SerializeMap;
-            let mut map = try!(serializer.serialize_map(None));
+            let mut map = serializer.serialize_map(None)?;
             for (k, v) in &self.0 {
-                try!(map.serialize_key(k));
-                try!(map.serialize_value(v));
+                map.serialize_key(k)?;
+                map.serialize_value(v)?;
             }
             map.end()
         }
@@ -1514,7 +1514,7 @@ fn test_serialize_map_with_no_len() {
         {
             let mut values = BTreeMap::new();
 
-            while let Some((key, value)) = try!(visitor.next_entry()) {
+            while let Some((key, value)) = visitor.next_entry()? {
                 values.insert(key, value);
             }
 
@@ -1760,8 +1760,21 @@ fn test_stack_overflow() {
         .collect();
     let _: Value = from_str(&brackets).unwrap();
 
-    let brackets: String = iter::repeat('[').take(128).collect();
+    let brackets: String = iter::repeat('[').take(129).collect();
     test_parse_err::<Value>(&[(&brackets, "recursion limit exceeded at line 1 column 128")]);
+}
+
+#[test]
+#[cfg(feature = "unbounded_depth")]
+fn test_disable_recursion_limit() {
+    let brackets: String = iter::repeat('[')
+        .take(140)
+        .chain(iter::repeat(']').take(140))
+        .collect();
+
+    let mut deserializer = Deserializer::from_str(&brackets);
+    deserializer.disable_recursion_limit();
+    Value::deserialize(&mut deserializer).unwrap();
 }
 
 #[test]
@@ -2165,4 +2178,23 @@ fn test_borrow_in_map_key() {
 
     let value = json!({ "map": { "1": null } });
     Outer::deserialize(&value).unwrap();
+}
+
+#[test]
+fn test_value_into_deserializer() {
+    #[derive(Deserialize)]
+    struct Outer {
+        inner: Inner,
+    }
+
+    #[derive(Deserialize)]
+    struct Inner {
+        string: String,
+    }
+
+    let mut map = BTreeMap::new();
+    map.insert("inner", json!({ "string": "Hello World" }));
+
+    let outer = Outer::deserialize(map.into_deserializer()).unwrap();
+    assert_eq!(outer.inner.string, "Hello World");
 }

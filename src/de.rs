@@ -25,6 +25,8 @@ pub struct Deserializer<R> {
     read: R,
     scratch: Vec<u8>,
     remaining_depth: u8,
+    #[cfg(feature = "unbounded_depth")]
+    disable_recursion_limit: bool,
 }
 
 impl<'de, R> Deserializer<R>
@@ -40,10 +42,23 @@ where
     ///   - Deserializer::from_bytes
     ///   - Deserializer::from_reader
     pub fn new(read: R) -> Self {
-        Deserializer {
-            read: read,
-            scratch: Vec::new(),
-            remaining_depth: 128,
+        #[cfg(not(feature = "unbounded_depth"))]
+        {
+            Deserializer {
+                read: read,
+                scratch: Vec::new(),
+                remaining_depth: 128,
+            }
+        }
+
+        #[cfg(feature = "unbounded_depth")]
+        {
+            Deserializer {
+                read: read,
+                scratch: Vec::new(),
+                remaining_depth: 128,
+                disable_recursion_limit: false,
+            }
         }
     }
 }
@@ -53,6 +68,10 @@ where
     R: io::Read,
 {
     /// Creates a JSON deserializer from an `io::Read`.
+    ///
+    /// Reader-based deserializers do not support deserializing borrowed types
+    /// like `&str`, since the `std::io::Read` trait has no non-copying methods
+    /// -- everything it does involves copying bytes out of the data source.
     pub fn from_reader(reader: R) -> Self {
         Deserializer::new(read::IoRead::new(reader))
     }
@@ -138,6 +157,54 @@ impl<'de, R: Read<'de>> Deserializer<R> {
             output: PhantomData,
             lifetime: PhantomData,
         }
+    }
+
+    /// Parse arbitrarily deep JSON structures without any consideration for
+    /// overflowing the stack.
+    ///
+    /// You will want to provide some other way to protect against stack
+    /// overflows, such as by wrapping your Deserializer in the dynamically
+    /// growing stack adapter provided by the serde_stacker crate. Additionally
+    /// you will need to be careful around other recursive operations on the
+    /// parsed result which may overflow the stack after deserialization has
+    /// completed, including, but not limited to, Display and Debug and Drop
+    /// impls.
+    ///
+    /// *This method is only available if serde_json is built with the
+    /// `"unbounded_depth"` feature.*
+    ///
+    /// # Examples
+    ///
+    /// ```edition2018
+    /// use serde::Deserialize;
+    /// use serde_jsonrc::Value;
+    ///
+    /// fn main() {
+    ///     let mut json = String::new();
+    ///     for _ in 0..10000 {
+    ///         json = format!("[{}]", json);
+    ///     }
+    ///
+    ///     let mut deserializer = serde_jsonrc::Deserializer::from_str(&json);
+    ///     deserializer.disable_recursion_limit();
+    ///     let deserializer = serde_stacker::Deserializer::new(&mut deserializer);
+    ///     let value = Value::deserialize(deserializer).unwrap();
+    ///
+    ///     carefully_drop_nested_arrays(value);
+    /// }
+    ///
+    /// fn carefully_drop_nested_arrays(value: Value) {
+    ///     let mut stack = vec![value];
+    ///     while let Some(value) = stack.pop() {
+    ///         if let Value::Array(array) = value {
+    ///             stack.extend(array);
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    #[cfg(feature = "unbounded_depth")]
+    pub fn disable_recursion_limit(&mut self) {
+        self.disable_recursion_limit = true;
     }
 
     fn peek(&mut self) -> Result<Option<u8>> {
@@ -370,7 +437,14 @@ impl<'de, R: Read<'de>> Deserializer<R> {
     }
 
     fn parse_integer(&mut self, positive: bool) -> Result<ParserNumber> {
-        match try!(self.next_char_or_null()) {
+        let next = match try!(self.next_char()) {
+            Some(b) => b,
+            None => {
+                return Err(self.error(ErrorCode::EofWhileParsingValue));
+            }
+        };
+
+        match next {
             b'0' => {
                 // There can be only one leading '0'.
                 match try!(self.peek_or_null()) {
@@ -488,7 +562,10 @@ impl<'de, R: Read<'de>> Deserializer<R> {
         }
 
         if !at_least_one_digit {
-            return Err(self.peek_error(ErrorCode::InvalidNumber));
+            match try!(self.peek()) {
+                Some(_) => return Err(self.peek_error(ErrorCode::InvalidNumber)),
+                None => return Err(self.peek_error(ErrorCode::EofWhileParsingValue)),
+            }
         }
 
         match try!(self.peek_or_null()) {
@@ -517,8 +594,15 @@ impl<'de, R: Read<'de>> Deserializer<R> {
             _ => true,
         };
 
+        let next = match try!(self.next_char()) {
+            Some(b) => b,
+            None => {
+                return Err(self.error(ErrorCode::EofWhileParsingValue));
+            }
+        };
+
         // Make sure a digit follows the exponent place.
-        let mut exp = match try!(self.next_char_or_null()) {
+        let mut exp = match next {
             c @ b'0'...b'9' => (c - b'0') as i32,
             _ => {
                 return Err(self.error(ErrorCode::InvalidNumber));
@@ -615,19 +699,19 @@ impl<'de, R: Read<'de>> Deserializer<R> {
     }
 
     #[cfg(feature = "arbitrary_precision")]
-    fn scan_or_null(&mut self, buf: &mut String) -> Result<u8> {
+    fn scan_or_eof(&mut self, buf: &mut String) -> Result<u8> {
         match try!(self.next_char()) {
             Some(b) => {
                 buf.push(b as char);
                 Ok(b)
             }
-            None => Ok(b'\x00'),
+            None => Err(self.error(ErrorCode::EofWhileParsingValue)),
         }
     }
 
     #[cfg(feature = "arbitrary_precision")]
     fn scan_integer(&mut self, buf: &mut String) -> Result<()> {
-        match try!(self.scan_or_null(buf)) {
+        match try!(self.scan_or_eof(buf)) {
             b'0' => {
                 // There can be only one leading '0'.
                 match try!(self.peek_or_null()) {
@@ -672,7 +756,10 @@ impl<'de, R: Read<'de>> Deserializer<R> {
         }
 
         if !at_least_one_digit {
-            return Err(self.peek_error(ErrorCode::InvalidNumber));
+            match try!(self.peek()) {
+                Some(_) => return Err(self.peek_error(ErrorCode::InvalidNumber)),
+                None => return Err(self.peek_error(ErrorCode::EofWhileParsingValue)),
+            }
         }
 
         match try!(self.peek_or_null()) {
@@ -698,7 +785,7 @@ impl<'de, R: Read<'de>> Deserializer<R> {
         }
 
         // Make sure a digit follows the exponent place.
-        match try!(self.scan_or_null(buf)) {
+        match try!(self.scan_or_eof(buf)) {
             b'0'...b'9' => {}
             _ => {
                 return Err(self.error(ErrorCode::InvalidNumber));
@@ -1038,6 +1125,39 @@ macro_rules! deserialize_prim_number {
     }
 }
 
+#[cfg(not(feature = "unbounded_depth"))]
+macro_rules! if_checking_recursion_limit {
+    ($($body:tt)*) => {
+        $($body)*
+    };
+}
+
+#[cfg(feature = "unbounded_depth")]
+macro_rules! if_checking_recursion_limit {
+    ($this:ident $($body:tt)*) => {
+        if !$this.disable_recursion_limit {
+            $this $($body)*
+        }
+    };
+}
+
+macro_rules! check_recursion {
+    ($this:ident $($body:tt)*) => {
+        if_checking_recursion_limit! {
+            $this.remaining_depth -= 1;
+            if $this.remaining_depth == 0 {
+                return Err($this.peek_error(ErrorCode::RecursionLimitExceeded));
+            }
+        }
+
+        $this $($body)*
+
+        if_checking_recursion_limit! {
+            $this.remaining_depth += 1;
+        }
+    };
+}
+
 impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     type Error = Error;
 
@@ -1083,15 +1203,10 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
                 }
             }
             b'[' => {
-                self.remaining_depth -= 1;
-                if self.remaining_depth == 0 {
-                    return Err(self.peek_error(ErrorCode::RecursionLimitExceeded));
+                check_recursion! {
+                    self.eat_char();
+                    let ret = visitor.visit_seq(SeqAccess::new(self));
                 }
-
-                self.eat_char();
-                let ret = visitor.visit_seq(SeqAccess::new(self));
-
-                self.remaining_depth += 1;
 
                 match (ret, self.end_seq()) {
                     (Ok(ret), Ok(())) => Ok(ret),
@@ -1099,15 +1214,10 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
                 }
             }
             b'{' => {
-                self.remaining_depth -= 1;
-                if self.remaining_depth == 0 {
-                    return Err(self.peek_error(ErrorCode::RecursionLimitExceeded));
+                check_recursion! {
+                    self.eat_char();
+                    let ret = visitor.visit_map(MapAccess::new(self));
                 }
-
-                self.eat_char();
-                let ret = visitor.visit_map(MapAccess::new(self));
-
-                self.remaining_depth += 1;
 
                 match (ret, self.end_map()) {
                     (Ok(ret), Ok(())) => Ok(ret),
@@ -1326,9 +1436,7 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     ///     Ok(())
     /// }
     /// #
-    /// # fn main() {
-    /// #     look_at_bytes().unwrap();
-    /// # }
+    /// # look_at_bytes().unwrap();
     /// ```
     ///
     /// Backslash escape sequences like `\n` are still interpreted and required
@@ -1348,9 +1456,7 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     ///     assert_eq!(expected_msg, parsed.unwrap_err().to_string());
     /// }
     /// #
-    /// # fn main() {
-    /// #     look_at_bytes();
-    /// # }
+    /// # look_at_bytes();
     /// ```
     fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value>
     where
@@ -1469,15 +1575,10 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
 
         let value = match peek {
             b'[' => {
-                self.remaining_depth -= 1;
-                if self.remaining_depth == 0 {
-                    return Err(self.peek_error(ErrorCode::RecursionLimitExceeded));
+                check_recursion! {
+                    self.eat_char();
+                    let ret = visitor.visit_seq(SeqAccess::new(self));
                 }
-
-                self.eat_char();
-                let ret = visitor.visit_seq(SeqAccess::new(self));
-
-                self.remaining_depth += 1;
 
                 match (ret, self.end_seq()) {
                     (Ok(ret), Ok(())) => Ok(ret),
@@ -1525,15 +1626,10 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
 
         let value = match peek {
             b'{' => {
-                self.remaining_depth -= 1;
-                if self.remaining_depth == 0 {
-                    return Err(self.peek_error(ErrorCode::RecursionLimitExceeded));
+                check_recursion! {
+                    self.eat_char();
+                    let ret = visitor.visit_map(MapAccess::new(self));
                 }
-
-                self.eat_char();
-                let ret = visitor.visit_map(MapAccess::new(self));
-
-                self.remaining_depth += 1;
 
                 match (ret, self.end_map()) {
                     (Ok(ret), Ok(())) => Ok(ret),
@@ -1567,15 +1663,10 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
 
         let value = match peek {
             b'[' => {
-                self.remaining_depth -= 1;
-                if self.remaining_depth == 0 {
-                    return Err(self.peek_error(ErrorCode::RecursionLimitExceeded));
+                check_recursion! {
+                    self.eat_char();
+                    let ret = visitor.visit_seq(SeqAccess::new(self));
                 }
-
-                self.eat_char();
-                let ret = visitor.visit_seq(SeqAccess::new(self));
-
-                self.remaining_depth += 1;
 
                 match (ret, self.end_seq()) {
                     (Ok(ret), Ok(())) => Ok(ret),
@@ -1583,15 +1674,10 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
                 }
             }
             b'{' => {
-                self.remaining_depth -= 1;
-                if self.remaining_depth == 0 {
-                    return Err(self.peek_error(ErrorCode::RecursionLimitExceeded));
+                check_recursion! {
+                    self.eat_char();
+                    let ret = visitor.visit_map(MapAccess::new(self));
                 }
-
-                self.eat_char();
-                let ret = visitor.visit_map(MapAccess::new(self));
-
-                self.remaining_depth += 1;
 
                 match (ret, self.end_map()) {
                     (Ok(ret), Ok(())) => Ok(ret),
@@ -1621,15 +1707,10 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     {
         match try!(self.parse_whitespace()) {
             Some(b'{') => {
-                self.remaining_depth -= 1;
-                if self.remaining_depth == 0 {
-                    return Err(self.peek_error(ErrorCode::RecursionLimitExceeded));
+                check_recursion! {
+                    self.eat_char();
+                    let value = try!(visitor.visit_enum(VariantAccess::new(self)));
                 }
-
-                self.eat_char();
-                let value = try!(visitor.visit_enum(VariantAccess::new(self)));
-
-                self.remaining_depth += 1;
 
                 match try!(self.parse_whitespace()) {
                     Some(b'}') => {
@@ -2156,13 +2237,26 @@ where
 /// as a [`File`], you will want to apply your own buffering because serde_jsonrc
 /// will not buffer the input. See [`std::io::BufReader`].
 ///
+/// It is expected that the input stream ends after the deserialized object.
+/// If the stream does not end, such as in the case of a persistent socket connection,
+/// this function will not return. It is possible instead to deserialize from a prefix of an input
+/// stream without looking for EOF by managing your own [`Deserializer`].
+///
+/// Note that counter to intuition, this function is usually slower than
+/// reading a file completely into memory and then applying [`from_str`]
+/// or [`from_slice`] on it. See [issue #160].
+///
 /// [`File`]: https://doc.rust-lang.org/std/fs/struct.File.html
-/// [`BufReader`]: https://doc.rust-lang.org/std/io/struct.BufReader.html
+/// [`std::io::BufReader`]: https://doc.rust-lang.org/std/io/struct.BufReader.html
+/// [`from_str`]: ./fn.from_str.html
+/// [`from_slice`]: ./fn.from_slice.html
+/// [issue #160]: https://github.com/serde-rs/json/issues/160
 ///
 /// # Example
 ///
+/// Reading the contents of a file.
+///
 /// ```edition2018
-/// # use serde_derive::Deserialize;
 /// use serde::Deserialize;
 ///
 /// use std::error::Error;
@@ -2196,6 +2290,38 @@ where
 /// }
 /// ```
 ///
+/// Reading from a persistent socket connection.
+///
+/// ```edition2018
+/// use serde::Deserialize;
+///
+/// use std::error::Error;
+/// use std::net::{TcpListener, TcpStream};
+///
+/// #[derive(Deserialize, Debug)]
+/// struct User {
+///     fingerprint: String,
+///     location: String,
+/// }
+///
+/// fn read_user_from_stream(tcp_stream: TcpStream) -> Result<User, Box<dyn Error>> {
+///     let mut de = serde_jsonrc::Deserializer::from_reader(tcp_stream);
+///     let u = User::deserialize(&mut de)?;
+///
+///     Ok(u)
+/// }
+///
+/// fn main() {
+/// # }
+/// # fn fake_main() {
+///     let listener = TcpListener::bind("127.0.0.1:4000").unwrap();
+///
+///     for stream in listener.incoming() {
+///         println!("{:#?}", read_user_from_stream(stream.unwrap()));
+///     }
+/// }
+/// ```
+///
 /// # Errors
 ///
 /// This conversion can fail if the structure of the input does not match the
@@ -2218,7 +2344,6 @@ where
 /// # Example
 ///
 /// ```edition2018
-/// # use serde_derive::Deserialize;
 /// use serde::Deserialize;
 ///
 /// #[derive(Deserialize, Debug)]
@@ -2261,7 +2386,6 @@ where
 /// # Example
 ///
 /// ```edition2018
-/// # use serde_derive::Deserialize;
 /// use serde::Deserialize;
 ///
 /// #[derive(Deserialize, Debug)]
