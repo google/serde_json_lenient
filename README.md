@@ -7,6 +7,8 @@ that is that is designed to parse JSON written by humans
 
 - `/*` and `//` style comments.
 - Trailing commas for object and array literals.
+- `\v` and `\xDD` literal escapes (for vertical tab and
+  two-digit hexadecimal characters)
 - [planned] Unquoted object keys (precise spec TBD).
 
 I am still playing with the idea of making it more lenient,
