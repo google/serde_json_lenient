@@ -1760,9 +1760,6 @@ impl<'de, 'a, R: Read<'de> + 'a> de::SeqAccess<'de> for SeqAccess<'a, R> {
                 // List most common branch first.
                 if b != b']' {
                     let result = Ok(Some(tri!(seed.deserialize(&mut *self.de))));
-                    if !result.is_ok() {
-                        return result;
-                    }
 
                     match tri!(self.de.parse_whitespace()) {
                         Some(b',') => self.de.eat_char(),
