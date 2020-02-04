@@ -1784,8 +1784,9 @@ impl<'de, 'a, R: Read<'de> + 'a> de::SeqAccess<'de> for SeqAccess<'a, R> {
     where
         T: de::DeserializeSeed<'de>,
     {
+        let peek = tri!(self.de.parse_whitespace());
         if self.de.ignore_trailing_commas {
-            match tri!(self.de.parse_whitespace()) {
+            match peek {
                 Some(b) => {
                     // List most common branch first.
                     if b != b']' {
@@ -1811,7 +1812,7 @@ impl<'de, 'a, R: Read<'de> + 'a> de::SeqAccess<'de> for SeqAccess<'a, R> {
                 None => Err(self.de.peek_error(ErrorCode::EofWhileParsingList)),
             }
         } else {
-            let peek = match tri!(self.de.parse_whitespace()) {
+            let peek = match peek {
                 Some(b']') => {
                     return Ok(None);
                 }
@@ -1862,17 +1863,9 @@ impl<'de, 'a, R: Read<'de> + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
     where
         K: de::DeserializeSeed<'de>,
     {
-        if self.de.ignore_trailing_commas {
-            match tri!(self.de.parse_whitespace()) {
-                Some(b'"') => seed.deserialize(MapKey { de: &mut *self.de }).map(Some),
-                Some(b'}') => {
-                    return Ok(None);
-                }
-                Some(_) => Err(self.de.peek_error(ErrorCode::KeyMustBeAString)),
-                None => Err(self.de.peek_error(ErrorCode::EofWhileParsingObject)),
-            }
-        } else {
-            let peek = match tri!(self.de.parse_whitespace()) {
+        let mut peek = tri!(self.de.parse_whitespace());
+        if !self.de.ignore_trailing_commas {
+            peek = match peek {
                 Some(b'}') => {
                     return Ok(None);
                 }
@@ -1892,13 +1885,23 @@ impl<'de, 'a, R: Read<'de> + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
                     return Err(self.de.peek_error(ErrorCode::EofWhileParsingObject));
                 }
             };
+        }
 
-            match peek {
-                Some(b'"') => seed.deserialize(MapKey { de: &mut *self.de }).map(Some),
-                Some(b'}') => Err(self.de.peek_error(ErrorCode::TrailingComma)),
-                Some(_) => Err(self.de.peek_error(ErrorCode::KeyMustBeAString)),
-                None => Err(self.de.peek_error(ErrorCode::EofWhileParsingValue)),
+        match peek {
+            Some(b'"') => seed.deserialize(MapKey { de: &mut *self.de }).map(Some),
+            Some(b'}') => {
+                if self.de.ignore_trailing_commas {
+                    Ok(None)
+                } else {
+                    Err(self.de.peek_error(ErrorCode::TrailingComma))
+                }
             }
+            Some(_) => Err(self.de.peek_error(ErrorCode::KeyMustBeAString)),
+            None => Err(self.de.peek_error(if self.de.ignore_trailing_commas {
+                ErrorCode::EofWhileParsingObject
+            } else {
+                ErrorCode::EofWhileParsingValue
+            })),
         }
     }
 
@@ -1906,9 +1909,10 @@ impl<'de, 'a, R: Read<'de> + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
     where
         V: de::DeserializeSeed<'de>,
     {
+        tri!(self.de.parse_object_colon());
+        let result = seed.deserialize(&mut *self.de);
+
         if self.de.ignore_trailing_commas {
-            tri!(self.de.parse_object_colon());
-            let result = seed.deserialize(&mut *self.de);
             if result.is_ok() {
                 match tri!(self.de.parse_whitespace()) {
                     Some(b',') => self.de.eat_char(),
@@ -1923,12 +1927,8 @@ impl<'de, 'a, R: Read<'de> + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
                     }
                 };
             };
-            result
-        } else {
-            tri!(self.de.parse_object_colon());
-
-            seed.deserialize(&mut *self.de)
         }
+        result
     }
 }
 
