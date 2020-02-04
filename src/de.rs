@@ -25,6 +25,7 @@ pub struct Deserializer<R> {
     remaining_depth: u8,
     #[cfg(feature = "unbounded_depth")]
     disable_recursion_limit: bool,
+    ignore_trailing_commas: bool,
 }
 
 impl<'de, R> Deserializer<R>
@@ -46,6 +47,7 @@ where
                 read: read,
                 scratch: Vec::new(),
                 remaining_depth: 128,
+                ignore_trailing_commas: true,
             }
         }
 
@@ -56,6 +58,7 @@ where
                 scratch: Vec::new(),
                 remaining_depth: 128,
                 disable_recursion_limit: false,
+                ignore_trailing_commas: true,
             }
         }
     }
@@ -202,6 +205,28 @@ impl<'de, R: Read<'de>> Deserializer<R> {
     #[cfg(feature = "unbounded_depth")]
     pub fn disable_recursion_limit(&mut self) {
         self.disable_recursion_limit = true;
+    }
+
+    /// Whether to ignore trailing commas.
+    ///
+    /// By default, serde_jsonrc ignores trailing commas in its JSON input even
+    /// though this is not specification-compliant. This API allows the parser
+    /// to be switched to a strict mode in this respect, by passing `false` into
+    /// this API.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use serde_jsonrc::{Deserializer, Value};
+    /// use serde::de::Deserialize;
+    ///
+    /// let s = r#" { "a", "b", }"#;
+    /// let mut deserializer = Deserializer::from_str(&s);
+    /// deserializer.set_ignore_trailing_commas(false);
+    /// assert!(Value::deserialize(&mut deserializer).is_err());
+    /// ```
+    pub fn set_ignore_trailing_commas(&mut self, ignore: bool) {
+        self.ignore_trailing_commas = ignore;
     }
 
     fn peek(&mut self) -> Result<Option<u8>> {
@@ -1740,11 +1765,15 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
 
 struct SeqAccess<'a, R: 'a> {
     de: &'a mut Deserializer<R>,
+    first: bool,
 }
 
 impl<'a, R: 'a> SeqAccess<'a, R> {
     fn new(de: &'a mut Deserializer<R>) -> Self {
-        SeqAccess { de }
+        SeqAccess {
+            de: de,
+            first: true,
+        }
     }
 }
 
@@ -1755,41 +1784,74 @@ impl<'de, 'a, R: Read<'de> + 'a> de::SeqAccess<'de> for SeqAccess<'a, R> {
     where
         T: de::DeserializeSeed<'de>,
     {
-        match tri!(self.de.parse_whitespace()) {
-            Some(b) => {
-                // List most common branch first.
-                if b != b']' {
-                    let result = Ok(Some(tri!(seed.deserialize(&mut *self.de))));
+        if self.de.ignore_trailing_commas {
+            match tri!(self.de.parse_whitespace()) {
+                Some(b) => {
+                    // List most common branch first.
+                    if b != b']' {
+                        let result = Ok(Some(tri!(seed.deserialize(&mut *self.de))));
 
-                    match tri!(self.de.parse_whitespace()) {
-                        Some(b',') => self.de.eat_char(),
-                        Some(b']') => {
-                            // Ignore.
+                        match tri!(self.de.parse_whitespace()) {
+                            Some(b',') => self.de.eat_char(),
+                            Some(b']') => {
+                                // Ignore.
+                            }
+                            Some(_) => {
+                                return Err(self.de.peek_error(ErrorCode::ExpectedListCommaOrEnd));
+                            }
+                            None => {
+                                return Err(self.de.peek_error(ErrorCode::EofWhileParsingList));
+                            }
                         }
-                        Some(_) => {
-                            return Err(self.de.peek_error(ErrorCode::ExpectedListCommaOrEnd));
-                        }
-                        None => {
-                            return Err(self.de.peek_error(ErrorCode::EofWhileParsingList));
-                        }
+                        result
+                    } else {
+                        Ok(None)
                     }
-                    result
-                } else {
-                    Ok(None)
                 }
+                None => Err(self.de.peek_error(ErrorCode::EofWhileParsingList)),
             }
-            None => Err(self.de.peek_error(ErrorCode::EofWhileParsingList)),
+        } else {
+            let peek = match tri!(self.de.parse_whitespace()) {
+                Some(b']') => {
+                    return Ok(None);
+                }
+                Some(b',') if !self.first => {
+                    self.de.eat_char();
+                    tri!(self.de.parse_whitespace())
+                }
+                Some(b) => {
+                    if self.first {
+                        self.first = false;
+                        Some(b)
+                    } else {
+                        return Err(self.de.peek_error(ErrorCode::ExpectedListCommaOrEnd));
+                    }
+                }
+                None => {
+                    return Err(self.de.peek_error(ErrorCode::EofWhileParsingList));
+                }
+            };
+
+            match peek {
+                Some(b']') => Err(self.de.peek_error(ErrorCode::TrailingComma)),
+                Some(_) => Ok(Some(tri!(seed.deserialize(&mut *self.de)))),
+                None => Err(self.de.peek_error(ErrorCode::EofWhileParsingValue)),
+            }
         }
     }
 }
 
 struct MapAccess<'a, R: 'a> {
     de: &'a mut Deserializer<R>,
+    first: bool,
 }
 
 impl<'a, R: 'a> MapAccess<'a, R> {
     fn new(de: &'a mut Deserializer<R>) -> Self {
-        MapAccess { de }
+        MapAccess {
+            de: de,
+            first: true,
+        }
     }
 }
 
@@ -1800,13 +1862,43 @@ impl<'de, 'a, R: Read<'de> + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
     where
         K: de::DeserializeSeed<'de>,
     {
-        match tri!(self.de.parse_whitespace()) {
-            Some(b'"') => seed.deserialize(MapKey { de: &mut *self.de }).map(Some),
-            Some(b'}') => {
-                return Ok(None);
+        if self.de.ignore_trailing_commas {
+            match tri!(self.de.parse_whitespace()) {
+                Some(b'"') => seed.deserialize(MapKey { de: &mut *self.de }).map(Some),
+                Some(b'}') => {
+                    return Ok(None);
+                }
+                Some(_) => Err(self.de.peek_error(ErrorCode::KeyMustBeAString)),
+                None => Err(self.de.peek_error(ErrorCode::EofWhileParsingObject)),
             }
-            Some(_) => Err(self.de.peek_error(ErrorCode::KeyMustBeAString)),
-            None => Err(self.de.peek_error(ErrorCode::EofWhileParsingObject)),
+        } else {
+            let peek = match tri!(self.de.parse_whitespace()) {
+                Some(b'}') => {
+                    return Ok(None);
+                }
+                Some(b',') if !self.first => {
+                    self.de.eat_char();
+                    tri!(self.de.parse_whitespace())
+                }
+                Some(b) => {
+                    if self.first {
+                        self.first = false;
+                        Some(b)
+                    } else {
+                        return Err(self.de.peek_error(ErrorCode::ExpectedObjectCommaOrEnd));
+                    }
+                }
+                None => {
+                    return Err(self.de.peek_error(ErrorCode::EofWhileParsingObject));
+                }
+            };
+
+            match peek {
+                Some(b'"') => seed.deserialize(MapKey { de: &mut *self.de }).map(Some),
+                Some(b'}') => Err(self.de.peek_error(ErrorCode::TrailingComma)),
+                Some(_) => Err(self.de.peek_error(ErrorCode::KeyMustBeAString)),
+                None => Err(self.de.peek_error(ErrorCode::EofWhileParsingValue)),
+            }
         }
     }
 
@@ -1814,23 +1906,29 @@ impl<'de, 'a, R: Read<'de> + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
     where
         V: de::DeserializeSeed<'de>,
     {
-        tri!(self.de.parse_object_colon());
-        let result = seed.deserialize(&mut *self.de);
-        if result.is_ok() {
-            match tri!(self.de.parse_whitespace()) {
-                Some(b',') => self.de.eat_char(),
-                Some(b'}') => {
-                    // Ignore.
-                }
-                Some(_) => {
-                    return Err(self.de.peek_error(ErrorCode::ExpectedObjectCommaOrEnd));
-                }
-                None => {
-                    return Err(self.de.peek_error(ErrorCode::EofWhileParsingObject));
-                }
+        if self.de.ignore_trailing_commas {
+            tri!(self.de.parse_object_colon());
+            let result = seed.deserialize(&mut *self.de);
+            if result.is_ok() {
+                match tri!(self.de.parse_whitespace()) {
+                    Some(b',') => self.de.eat_char(),
+                    Some(b'}') => {
+                        // Ignore.
+                    }
+                    Some(_) => {
+                        return Err(self.de.peek_error(ErrorCode::ExpectedObjectCommaOrEnd));
+                    }
+                    None => {
+                        return Err(self.de.peek_error(ErrorCode::EofWhileParsingObject));
+                    }
+                };
             };
-        };
-        result
+            result
+        } else {
+            tri!(self.de.parse_object_colon());
+
+            seed.deserialize(&mut *self.de)
+        }
     }
 }
 
