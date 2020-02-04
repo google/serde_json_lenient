@@ -6,7 +6,8 @@ extern crate serde;
 #[macro_use]
 extern crate serde_jsonrc;
 
-use serde_jsonrc::{from_str, Value};
+use serde::Deserialize;
+use serde_jsonrc::{from_str, Deserializer, Value};
 
 #[test]
 fn test_trailing_comma_object() {
@@ -111,4 +112,21 @@ fn test_parse_enum_as_object_with_deny_unknown_fields() {
             name: "Kate".to_string()
         }
     );
+}
+
+#[test]
+fn test_commas_switchable() {
+    let s = r#"
+    {
+        "key": "value",
+    }"#;
+    let mut deserializer = Deserializer::from_str(&s);
+    deserializer.set_ignore_trailing_commas(false);
+    assert!(Value::deserialize(&mut deserializer)
+        .unwrap_err()
+        .to_string()
+        .contains("comma"));
+    let mut deserializer = Deserializer::from_str(&s);
+    let value = Value::deserialize(&mut deserializer).unwrap();
+    assert_eq!(value, json!({ "key": "value" }));
 }
