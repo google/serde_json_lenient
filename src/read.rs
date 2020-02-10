@@ -81,7 +81,7 @@ pub trait Read<'de>: private::Sealed {
     /// Assumes the previous byte was a hex escape sequnce ('\u') in a string.
     /// Parses next hexadecimal sequence.
     #[doc(hidden)]
-    fn decode_hex_escape(&mut self) -> Result<u16>;
+    fn decode_hex_escape(&mut self, num_digits: usize) -> Result<u16>;
 
     /// Switch raw buffering mode on.
     ///
@@ -344,9 +344,9 @@ where
         }
     }
 
-    fn decode_hex_escape(&mut self) -> Result<u16> {
+    fn decode_hex_escape(&mut self, num_digits: usize) -> Result<u16> {
         let mut n = 0;
-        for _ in 0..4 {
+        for _ in 0..num_digits {
             match decode_hex_val(tri!(next_or_eof(self))) {
                 None => return error(self, ErrorCode::InvalidEscape),
                 Some(val) => {
@@ -548,14 +548,14 @@ impl<'a> Read<'a> for SliceRead<'a> {
         }
     }
 
-    fn decode_hex_escape(&mut self) -> Result<u16> {
-        if self.index + 4 > self.slice.len() {
+    fn decode_hex_escape(&mut self, num_digits: usize) -> Result<u16> {
+        if self.index + num_digits > self.slice.len() {
             self.index = self.slice.len();
             return error(self, ErrorCode::EofWhileParsingString);
         }
 
         let mut n = 0;
-        for _ in 0..4 {
+        for _ in 0..num_digits {
             let ch = decode_hex_val(self.slice[self.index]);
             self.index += 1;
             match ch {
@@ -656,8 +656,8 @@ impl<'a> Read<'a> for StrRead<'a> {
         self.delegate.ignore_str()
     }
 
-    fn decode_hex_escape(&mut self) -> Result<u16> {
-        self.delegate.decode_hex_escape()
+    fn decode_hex_escape(&mut self, num_digits: usize) -> Result<u16> {
+        self.delegate.decode_hex_escape(num_digits)
     }
 
     #[cfg(feature = "raw_value")]
@@ -737,8 +737,19 @@ fn parse_escape<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) -> Resul
         b'n' => scratch.push(b'\n'),
         b'r' => scratch.push(b'\r'),
         b't' => scratch.push(b'\t'),
+        b'v' => scratch.push(b'\x0b'),
+        b'x' => {
+            let c: u32 = tri!(read.decode_hex_escape(2)).into();
+            let c = match char::from_u32(c) {
+                Some(c) => c,
+                None => {
+                    return error(read, ErrorCode::InvalidUnicodeCodePoint);
+                }
+            };
+            scratch.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
+        }
         b'u' => {
-            let c = match tri!(read.decode_hex_escape()) {
+            let c = match tri!(read.decode_hex_escape(4)) {
                 0xDC00..=0xDFFF => {
                     return error(read, ErrorCode::LoneLeadingSurrogateInHexEscape);
                 }
@@ -753,7 +764,7 @@ fn parse_escape<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) -> Resul
                         return error(read, ErrorCode::UnexpectedEndOfHexEscape);
                     }
 
-                    let n2 = tri!(read.decode_hex_escape());
+                    let n2 = tri!(read.decode_hex_escape(4));
 
                     if n2 < 0xDC00 || n2 > 0xDFFF {
                         return error(read, ErrorCode::LoneLeadingSurrogateInHexEscape);
@@ -793,9 +804,9 @@ fn ignore_escape<'de, R: ?Sized + Read<'de>>(read: &mut R) -> Result<()> {
     let ch = tri!(next_or_eof(read));
 
     match ch {
-        b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' => {}
+        b'"' | b'\\' | b'/' | b'b' | b'f' | b'n' | b'r' | b't' | b'v' => {}
         b'u' => {
-            let n = match tri!(read.decode_hex_escape()) {
+            let n = match tri!(read.decode_hex_escape(4)) {
                 0xDC00..=0xDFFF => {
                     return error(read, ErrorCode::LoneLeadingSurrogateInHexEscape);
                 }
@@ -810,7 +821,7 @@ fn ignore_escape<'de, R: ?Sized + Read<'de>>(read: &mut R) -> Result<()> {
                         return error(read, ErrorCode::UnexpectedEndOfHexEscape);
                     }
 
-                    let n2 = tri!(read.decode_hex_escape());
+                    let n2 = tri!(read.decode_hex_escape(4));
 
                     if n2 < 0xDC00 || n2 > 0xDFFF {
                         return error(read, ErrorCode::LoneLeadingSurrogateInHexEscape);
@@ -825,6 +836,15 @@ fn ignore_escape<'de, R: ?Sized + Read<'de>>(read: &mut R) -> Result<()> {
             if char::from_u32(n).is_none() {
                 return error(read, ErrorCode::InvalidUnicodeCodePoint);
             }
+        }
+        b'x' => {
+            let c: u32 = tri!(read.decode_hex_escape(2)).into();
+            match char::from_u32(c) {
+                Some(_) => {}
+                None => {
+                    return error(read, ErrorCode::InvalidUnicodeCodePoint);
+                }
+            };
         }
         _ => {
             return error(read, ErrorCode::InvalidEscape);
