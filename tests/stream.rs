@@ -1,14 +1,9 @@
 #![cfg(not(feature = "preserve_order"))]
 
-extern crate serde;
-
-#[macro_use]
-extern crate serde_jsonrc;
-
-use serde_jsonrc::{Deserializer, Value};
+use serde_jsonrc::{json, Deserializer, Value};
 
 // Rustfmt issue https://github.com/rust-lang-nursery/rustfmt/issues/2740
-#[cfg_attr(rustfmt, rustfmt_skip)]
+#[rustfmt::skip]
 macro_rules! test_stream {
     ($data:expr, $ty:ty, |$stream:ident| $test:block) => {
         {

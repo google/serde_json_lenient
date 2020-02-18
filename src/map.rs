@@ -6,16 +6,11 @@
 //! [`BTreeMap`]: https://doc.rust-lang.org/std/collections/struct.BTreeMap.html
 //! [`IndexMap`]: https://docs.rs/indexmap/*/indexmap/map/struct.IndexMap.html
 
+use crate::lib::borrow::Borrow;
+use crate::lib::iter::FromIterator;
+use crate::lib::*;
+use crate::value::Value;
 use serde::{de, ser};
-use std::borrow::Borrow;
-use std::fmt::{self, Debug};
-use std::hash::Hash;
-use std::iter::FromIterator;
-use std::ops;
-use value::Value;
-
-#[cfg(not(feature = "preserve_order"))]
-use std::collections::{btree_map, BTreeMap};
 
 #[cfg(feature = "preserve_order")]
 use indexmap::{self, IndexMap};
@@ -132,16 +127,27 @@ impl Map<String, Value> {
         return self.map.remove(key);
     }
 
+    /// Moves all elements from other into Self, leaving other empty.
+    #[inline]
+    pub fn append(&mut self, other: &mut Self) {
+        #[cfg(feature = "preserve_order")]
+        for (k, v) in std::mem::replace(&mut other.map, MapImpl::default()).into_iter() {
+            self.map.insert(k, v);
+        }
+        #[cfg(not(feature = "preserve_order"))]
+        self.map.append(&mut other.map);
+    }
+
     /// Gets the given key's corresponding entry in the map for in-place
     /// manipulation.
     pub fn entry<S>(&mut self, key: S) -> Entry
     where
         S: Into<String>,
     {
+        #[cfg(not(feature = "preserve_order"))]
+        use crate::lib::btree_map::Entry as EntryImpl;
         #[cfg(feature = "preserve_order")]
         use indexmap::map::Entry as EntryImpl;
-        #[cfg(not(feature = "preserve_order"))]
-        use std::collections::btree_map::Entry as EntryImpl;
 
         match self.map.entry(key.into()) {
             EntryImpl::Vacant(vacant) => Entry::Vacant(VacantEntry { vacant: vacant }),
@@ -239,7 +245,7 @@ impl PartialEq for Map<String, Value> {
 /// Access an element of this map. Panics if the given key is not present in the
 /// map.
 ///
-/// ```edition2018
+/// ```
 /// # use serde_jsonrc::Value;
 /// #
 /// # let val = &Value::String("".to_owned());
@@ -267,7 +273,7 @@ where
 /// Mutably access an element of this map. Panics if the given key is not
 /// present in the map.
 ///
-/// ```edition2018
+/// ```
 /// # use serde_jsonrc::json;
 /// #
 /// # let mut map = serde_jsonrc::Map::new();
@@ -299,10 +305,10 @@ impl ser::Serialize for Map<String, Value> {
         S: ser::Serializer,
     {
         use serde::ser::SerializeMap;
-        let mut map = try!(serializer.serialize_map(Some(self.len())));
+        let mut map = tri!(serializer.serialize_map(Some(self.len())));
         for (k, v) in self {
-            try!(map.serialize_key(k));
-            try!(map.serialize_value(v));
+            tri!(map.serialize_key(k));
+            tri!(map.serialize_value(v));
         }
         map.end()
     }
@@ -338,7 +344,7 @@ impl<'de> de::Deserialize<'de> for Map<String, Value> {
             {
                 let mut values = Map::new();
 
-                while let Some((key, value)) = try!(visitor.next_entry()) {
+                while let Some((key, value)) = tri!(visitor.next_entry()) {
                     values.insert(key, value);
                 }
 
@@ -443,7 +449,7 @@ impl<'a> Entry<'a> {
     ///
     /// # Examples
     ///
-    /// ```edition2018
+    /// ```
     /// let mut map = serde_jsonrc::Map::new();
     /// assert_eq!(map.entry("serde").key(), &"serde");
     /// ```
@@ -459,7 +465,7 @@ impl<'a> Entry<'a> {
     ///
     /// # Examples
     ///
-    /// ```edition2018
+    /// ```
     /// # use serde_jsonrc::json;
     /// #
     /// let mut map = serde_jsonrc::Map::new();
@@ -480,7 +486,7 @@ impl<'a> Entry<'a> {
     ///
     /// # Examples
     ///
-    /// ```edition2018
+    /// ```
     /// # use serde_jsonrc::json;
     /// #
     /// let mut map = serde_jsonrc::Map::new();
@@ -505,7 +511,7 @@ impl<'a> VacantEntry<'a> {
     ///
     /// # Examples
     ///
-    /// ```edition2018
+    /// ```
     /// use serde_jsonrc::map::Entry;
     ///
     /// let mut map = serde_jsonrc::Map::new();
@@ -527,7 +533,7 @@ impl<'a> VacantEntry<'a> {
     ///
     /// # Examples
     ///
-    /// ```edition2018
+    /// ```
     /// # use serde_jsonrc::json;
     /// #
     /// use serde_jsonrc::map::Entry;
@@ -552,7 +558,7 @@ impl<'a> OccupiedEntry<'a> {
     ///
     /// # Examples
     ///
-    /// ```edition2018
+    /// ```
     /// # use serde_jsonrc::json;
     /// #
     /// use serde_jsonrc::map::Entry;
@@ -576,7 +582,7 @@ impl<'a> OccupiedEntry<'a> {
     ///
     /// # Examples
     ///
-    /// ```edition2018
+    /// ```
     /// # use serde_jsonrc::json;
     /// #
     /// use serde_jsonrc::map::Entry;
@@ -600,7 +606,7 @@ impl<'a> OccupiedEntry<'a> {
     ///
     /// # Examples
     ///
-    /// ```edition2018
+    /// ```
     /// # use serde_jsonrc::json;
     /// #
     /// use serde_jsonrc::map::Entry;
@@ -626,7 +632,7 @@ impl<'a> OccupiedEntry<'a> {
     ///
     /// # Examples
     ///
-    /// ```edition2018
+    /// ```
     /// # use serde_jsonrc::json;
     /// #
     /// use serde_jsonrc::map::Entry;
@@ -653,7 +659,7 @@ impl<'a> OccupiedEntry<'a> {
     ///
     /// # Examples
     ///
-    /// ```edition2018
+    /// ```
     /// # use serde_jsonrc::json;
     /// #
     /// use serde_jsonrc::map::Entry;
@@ -678,7 +684,7 @@ impl<'a> OccupiedEntry<'a> {
     ///
     /// # Examples
     ///
-    /// ```edition2018
+    /// ```
     /// # use serde_jsonrc::json;
     /// #
     /// use serde_jsonrc::map::Entry;
