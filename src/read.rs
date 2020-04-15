@@ -679,10 +679,12 @@ impl<'a> Read<'a> for StrRead<'a> {
 
 //////////////////////////////////////////////////////////////////////////////
 
+const ALLOW_CONTROL_CHARACTERS_IN_STRING: bool = false;
+
 // Lookup table of bytes that must be escaped. A value of true at index i means
 // that byte i requires an escape sequence in the input.
 static ESCAPE: [bool; 256] = {
-    const CT: bool = true; // control character \x00..=\x1F
+    const CT: bool = ALLOW_CONTROL_CHARACTERS_IN_STRING; // control character \x00..=\x1F
     const QU: bool = true; // quote \x22
     const BS: bool = true; // backslash \x5C
     const __: bool = false; // allow unescaped
