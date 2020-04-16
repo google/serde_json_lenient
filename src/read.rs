@@ -14,8 +14,6 @@ use crate::raw::OwnedRawDeserializer;
 #[cfg(feature = "raw_value")]
 use serde::de::Visitor;
 
-const SUBSTITUTE_INVALID_UNICODE_CHARS: bool = true;
-
 /// Trait used by the deserializer for iterating over input. This is manually
 /// "specialized" for iterating over &[u8]. Once feature(specialization) is
 /// stable we can use actual specialization.
@@ -99,6 +97,9 @@ pub trait Read<'de>: private::Sealed {
     fn end_raw_buffering<V>(&mut self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>;
+
+    /// Whether we should replace invalid unicode characters with \u{fffd}.
+    fn replace_invalid_unicode(&self) -> bool;
 }
 
 pub struct Position {
@@ -294,6 +295,7 @@ pub struct SliceRead<'a> {
     slice: &'a [u8],
     /// Index of the *next* byte that will be returned by next() or peek().
     index: usize,
+    replace_invalid_characters: bool,
     #[cfg(feature = "raw_value")]
     raw_buffering_start_index: usize,
 }
@@ -386,6 +388,10 @@ impl<'de, R> Read<'de> for IoRead<R>
 where
     R: io::Read,
 {
+    fn replace_invalid_unicode(&self) -> bool {
+        false
+    }
+
     #[inline]
     fn next(&mut self) -> Result<Option<u8>> {
         match self.ch.take() {
@@ -465,12 +471,8 @@ where
     }
 
     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'de, 's, str>> {
-        if SUBSTITUTE_INVALID_UNICODE_CHARS {
-            self.parse_str_bytes(scratch, true, SubstitutingStrUtfOutputStrategy)
-        } else {
-            self.parse_str_bytes(scratch, true, StrUtfOutputStrategy)
-        }
-        .map(Reference::Copied)
+        self.parse_str_bytes(scratch, true, StrUtfOutputStrategy)
+            .map(Reference::Copied)
     }
 
     fn parse_str_raw<'s>(
@@ -536,12 +538,13 @@ where
 
 impl<'a> SliceRead<'a> {
     /// Create a JSON input source to read from a slice of bytes.
-    pub fn new(slice: &'a [u8]) -> Self {
+    pub fn new(slice: &'a [u8], replace_invalid_characters: bool) -> Self {
         #[cfg(not(feature = "raw_value"))]
         {
             SliceRead {
                 slice: slice,
                 index: 0,
+                replace_invalid_characters,
             }
         }
         #[cfg(feature = "raw_value")]
@@ -549,6 +552,7 @@ impl<'a> SliceRead<'a> {
             SliceRead {
                 slice: slice,
                 index: 0,
+                replace_invalid_characters,
                 raw_buffering_start_index: 0,
             }
         }
@@ -629,6 +633,10 @@ impl<'a> SliceRead<'a> {
 impl<'a> private::Sealed for SliceRead<'a> {}
 
 impl<'a> Read<'a> for SliceRead<'a> {
+    fn replace_invalid_unicode(&self) -> bool {
+        self.replace_invalid_characters
+    }
+
     #[inline]
     fn next(&mut self) -> Result<Option<u8>> {
         // `Ok(self.slice.get(self.index).map(|ch| { self.index += 1; *ch }))`
@@ -673,7 +681,7 @@ impl<'a> Read<'a> for SliceRead<'a> {
     }
 
     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'a, 's, str>> {
-        if SUBSTITUTE_INVALID_UNICODE_CHARS {
+        if self.replace_invalid_characters {
             self.parse_str_bytes(scratch, true, SubstitutingStrUtfOutputStrategy)
         } else {
             self.parse_str_bytes(scratch, true, StrUtfOutputStrategy)
@@ -757,13 +765,13 @@ impl<'a> StrRead<'a> {
         #[cfg(not(feature = "raw_value"))]
         {
             StrRead {
-                delegate: SliceRead::new(s.as_bytes()),
+                delegate: SliceRead::new(s.as_bytes(), false),
             }
         }
         #[cfg(feature = "raw_value")]
         {
             StrRead {
-                delegate: SliceRead::new(s.as_bytes()),
+                delegate: SliceRead::new(s.as_bytes(), false),
                 data: s,
             }
         }
@@ -773,6 +781,10 @@ impl<'a> StrRead<'a> {
 impl<'a> private::Sealed for StrRead<'a> {}
 
 impl<'a> Read<'a> for StrRead<'a> {
+    fn replace_invalid_unicode(&self) -> bool {
+        false
+    }
+
     #[inline]
     fn next(&mut self) -> Result<Option<u8>> {
         self.delegate.next()
@@ -896,8 +908,7 @@ fn error<'de, R: ?Sized + Read<'de>, T>(read: &R, reason: ErrorCode) -> Result<T
 
 fn parse_escape<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) -> Result<()> {
     let r = parse_escape_or_fail(read, scratch);
-    if SUBSTITUTE_INVALID_UNICODE_CHARS {
-        println!("Result is {:?}", r);
+    if read.replace_invalid_unicode() {
         match r {
             Ok(a) => Ok(a),
             Err(_) => {
