@@ -120,6 +120,42 @@ impl<'b, 'c, T: ?Sized + 'static> Deref for Reference<'b, 'c, T> {
     }
 }
 
+/// Trait used by parse_str_bytes to convert the resulting bytes
+/// into a string-like thing. Depending on the original caller, this may
+/// be a &str or a $[u8].
+trait UtfOutputStrategy<'s, T>
+where
+    T: 's,
+{
+    fn to_result<'de, R: Read<'de>>(&self, read: &R, slice: &'s [u8]) -> Result<T>;
+}
+
+struct StrUtfOutputStrategy;
+
+impl<'s> UtfOutputStrategy<'s, &'s str> for StrUtfOutputStrategy {
+    fn to_result<'de, R: Read<'de>>(&self, read: &R, slice: &'s [u8]) -> Result<&'s str> {
+        str::from_utf8(slice).or_else(|_| error(read, ErrorCode::InvalidUnicodeCodePoint))
+    }
+}
+
+struct UncheckedStrUtfOutputStrategy;
+
+impl<'s> UtfOutputStrategy<'s, &'s str> for UncheckedStrUtfOutputStrategy {
+    fn to_result<'de, R: Read<'de>>(&self, _: &R, slice: &'s [u8]) -> Result<&'s str> {
+        // The input is assumed to be valid UTF-8 and the \u-escapes are
+        // checked along the way, so don't need to check here.
+        Ok(unsafe { str::from_utf8_unchecked(slice) })
+    }
+}
+
+struct SliceUtfOutputStrategy;
+
+impl<'s> UtfOutputStrategy<'s, &'s [u8]> for SliceUtfOutputStrategy {
+    fn to_result<'de, R: Read<'de>>(&self, _: &R, slice: &'s [u8]) -> Result<&'s [u8]> {
+        Ok(slice)
+    }
+}
+
 /// JSON input source that reads from a std::io input stream.
 #[cfg(feature = "std")]
 pub struct IoRead<R>
@@ -194,15 +230,15 @@ impl<R> IoRead<R>
 where
     R: io::Read,
 {
-    fn parse_str_bytes<'s, T, F>(
+    fn parse_str_bytes<'s, T, S>(
         &'s mut self,
         scratch: &'s mut Vec<u8>,
         validate: bool,
-        result: F,
+        utf_strategy: S,
     ) -> Result<T>
     where
         T: 's,
-        F: FnOnce(&'s Self, &'s [u8]) -> Result<T>,
+        S: UtfOutputStrategy<'s, T>,
     {
         loop {
             let ch = tri!(next_or_eof(self));
@@ -212,7 +248,7 @@ where
             }
             match ch {
                 b'"' => {
-                    return result(self, scratch);
+                    return utf_strategy.to_result(self, scratch);
                 }
                 b'\\' => {
                     tri!(parse_escape(self, scratch));
@@ -312,7 +348,7 @@ where
     }
 
     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'de, 's, str>> {
-        self.parse_str_bytes(scratch, true, as_str)
+        self.parse_str_bytes(scratch, true, StrUtfOutputStrategy)
             .map(Reference::Copied)
     }
 
@@ -320,7 +356,7 @@ where
         &'s mut self,
         scratch: &'s mut Vec<u8>,
     ) -> Result<Reference<'de, 's, [u8]>> {
-        self.parse_str_bytes(scratch, false, |_, bytes| Ok(bytes))
+        self.parse_str_bytes(scratch, false, SliceUtfOutputStrategy)
             .map(Reference::Copied)
     }
 
@@ -416,15 +452,15 @@ impl<'a> SliceRead<'a> {
     /// The big optimization here over IoRead is that if the string contains no
     /// backslash escape sequences, the returned &str is a slice of the raw JSON
     /// data so we avoid copying into the scratch space.
-    fn parse_str_bytes<'s, T: ?Sized, F>(
+    fn parse_str_bytes<'s, T: ?Sized, S>(
         &'s mut self,
         scratch: &'s mut Vec<u8>,
         validate: bool,
-        result: F,
+        utf_strategy: S,
     ) -> Result<Reference<'a, 's, T>>
     where
         T: 's,
-        F: for<'f> FnOnce(&'s Self, &'f [u8]) -> Result<&'f T>,
+        S: for<'f> UtfOutputStrategy<'f, &'f T>,
     {
         // Index of the first byte not yet copied into the scratch space.
         let mut start = self.index;
@@ -443,11 +479,13 @@ impl<'a> SliceRead<'a> {
                         // copying.
                         let borrowed = &self.slice[start..self.index];
                         self.index += 1;
-                        return result(self, borrowed).map(Reference::Borrowed);
+                        return utf_strategy
+                            .to_result(self, borrowed)
+                            .map(Reference::Borrowed);
                     } else {
                         scratch.extend_from_slice(&self.slice[start..self.index]);
                         self.index += 1;
-                        return result(self, scratch).map(Reference::Copied);
+                        return utf_strategy.to_result(self, scratch).map(Reference::Copied);
                     }
                 }
                 b'\\' => {
@@ -514,14 +552,14 @@ impl<'a> Read<'a> for SliceRead<'a> {
     }
 
     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'a, 's, str>> {
-        self.parse_str_bytes(scratch, true, as_str)
+        self.parse_str_bytes(scratch, true, StrUtfOutputStrategy)
     }
 
     fn parse_str_raw<'s>(
         &'s mut self,
         scratch: &'s mut Vec<u8>,
     ) -> Result<Reference<'a, 's, [u8]>> {
-        self.parse_str_bytes(scratch, false, |_, bytes| Ok(bytes))
+        self.parse_str_bytes(scratch, false, SliceUtfOutputStrategy)
     }
 
     fn ignore_str(&mut self) -> Result<()> {
@@ -638,11 +676,8 @@ impl<'a> Read<'a> for StrRead<'a> {
     }
 
     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'a, 's, str>> {
-        self.delegate.parse_str_bytes(scratch, true, |_, bytes| {
-            // The input is assumed to be valid UTF-8 and the \u-escapes are
-            // checked along the way, so don't need to check here.
-            Ok(unsafe { str::from_utf8_unchecked(bytes) })
-        })
+        self.delegate
+            .parse_str_bytes(scratch, true, UncheckedStrUtfOutputStrategy)
     }
 
     fn parse_str_raw<'s>(
@@ -717,10 +752,6 @@ fn next_or_eof<'de, R: ?Sized + Read<'de>>(read: &mut R) -> Result<u8> {
 fn error<'de, R: ?Sized + Read<'de>, T>(read: &R, reason: ErrorCode) -> Result<T> {
     let position = read.position();
     Err(Error::syntax(reason, position.line, position.column))
-}
-
-fn as_str<'de, 's, R: Read<'de>>(read: &R, slice: &'s [u8]) -> Result<&'s str> {
-    str::from_utf8(slice).or_else(|_| error(read, ErrorCode::InvalidUnicodeCodePoint))
 }
 
 /// Parses a JSON escape sequence and appends it into the scratch space. Assumes
