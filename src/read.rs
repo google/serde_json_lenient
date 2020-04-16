@@ -874,14 +874,45 @@ fn next_or_eof<'de, R: ?Sized + Read<'de>>(read: &mut R) -> Result<u8> {
     }
 }
 
+fn next_expecting<'de, R: ?Sized + Read<'de>>(
+    read: &mut R,
+    expected: u8,
+    errcode: ErrorCode,
+) -> Result<u8> {
+    match tri!(read.peek()) {
+        Some(b) if b == expected => {
+            read.discard();
+            Ok(b)
+        }
+        Some(_) => error(read, errcode),
+        None => error(read, ErrorCode::EofWhileParsingString),
+    }
+}
+
 fn error<'de, R: ?Sized + Read<'de>, T>(read: &R, reason: ErrorCode) -> Result<T> {
     let position = read.position();
     Err(Error::syntax(reason, position.line, position.column))
 }
 
+fn parse_escape<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) -> Result<()> {
+    let r = parse_escape_or_fail(read, scratch);
+    if SUBSTITUTE_INVALID_UNICODE_CHARS {
+        println!("Result is {:?}", r);
+        match r {
+            Ok(a) => Ok(a),
+            Err(_) => {
+                scratch.extend("\u{fffd}".as_bytes());
+                Ok(())
+            }
+        }
+    } else {
+        r
+    }
+}
+
 /// Parses a JSON escape sequence and appends it into the scratch space. Assumes
 /// the previous byte read was a backslash.
-fn parse_escape<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) -> Result<()> {
+fn parse_escape_or_fail<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) -> Result<()> {
     let ch = tri!(next_or_eof(read));
 
     match ch {
@@ -902,12 +933,16 @@ fn parse_escape<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) -> Resul
                 // Non-BMP characters are encoded as a sequence of
                 // two hex escapes, representing UTF-16 surrogates.
                 n1 @ 0xD800..=0xDBFF => {
-                    if tri!(next_or_eof(read)) != b'\\' {
-                        return error(read, ErrorCode::UnexpectedEndOfHexEscape);
-                    }
-                    if tri!(next_or_eof(read)) != b'u' {
-                        return error(read, ErrorCode::UnexpectedEndOfHexEscape);
-                    }
+                    tri!(next_expecting(
+                        read,
+                        b'\\',
+                        ErrorCode::UnexpectedEndOfHexEscape
+                    ));
+                    tri!(next_expecting(
+                        read,
+                        b'u',
+                        ErrorCode::UnexpectedEndOfHexEscape
+                    ));
 
                     let n2 = tri!(read.decode_hex_escape());
 
