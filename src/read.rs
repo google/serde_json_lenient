@@ -14,6 +14,8 @@ use crate::raw::OwnedRawDeserializer;
 #[cfg(feature = "raw_value")]
 use serde::de::Visitor;
 
+const SUBSTITUTE_INVALID_UNICODE_CHARS: bool = true;
+
 /// Trait used by the deserializer for iterating over input. This is manually
 /// "specialized" for iterating over &[u8]. Once feature(specialization) is
 /// stable we can use actual specialization.
@@ -122,37 +124,152 @@ impl<'b, 'c, T: ?Sized + 'static> Deref for Reference<'b, 'c, T> {
 
 /// Trait used by parse_str_bytes to convert the resulting bytes
 /// into a string-like thing. Depending on the original caller, this may
-/// be a &str or a $[u8].
-trait UtfOutputStrategy<'s, T>
-where
-    T: 's,
-{
-    fn to_result<'de, R: Read<'de>>(&self, read: &R, slice: &'s [u8]) -> Result<T>;
+
+/// be a &str or a &[u8].
+trait UtfOutputStrategy<T: ?Sized> {
+    fn to_result_simple<'de, 's, R: Read<'de>>(&self, read: &R, slice: &'s [u8]) -> Result<&'s T>;
+
+    fn to_result_direct<'de, 's, R: Read<'de>>(
+        &self,
+        read: &R,
+        slice: &'s [u8],
+        _: &'de mut Vec<u8>,
+    ) -> Result<Reference<'s, 'de, T>> {
+        self.to_result_simple(read, slice)
+            .map(|r| Reference::Borrowed(r))
+    }
+
+    fn to_result_from_scratch<'de, 's, R: Read<'de>>(
+        &self,
+        read: &R,
+        slice: &'s [u8],
+    ) -> Result<&'s T> {
+        self.to_result_simple(read, slice)
+    }
+    fn extend_scratch(&self, scratch: &mut Vec<u8>, slice: &[u8]) {
+        scratch.extend(slice);
+    }
+}
+
+fn convert_or_error<'de, 's, R: Read<'de>>(read: &R, slice: &'s [u8]) -> Result<&'s str> {
+    str::from_utf8(slice).or_else(|_| error(read, ErrorCode::InvalidUnicodeCodePoint))
 }
 
 struct StrUtfOutputStrategy;
 
-impl<'s> UtfOutputStrategy<'s, &'s str> for StrUtfOutputStrategy {
-    fn to_result<'de, R: Read<'de>>(&self, read: &R, slice: &'s [u8]) -> Result<&'s str> {
-        str::from_utf8(slice).or_else(|_| error(read, ErrorCode::InvalidUnicodeCodePoint))
+impl UtfOutputStrategy<str> for StrUtfOutputStrategy {
+    fn to_result_simple<'de, 's, R: Read<'de>>(
+        &self,
+        read: &R,
+        slice: &'s [u8],
+    ) -> Result<&'s str> {
+        convert_or_error(read, slice)
+    }
+
+    fn to_result_from_scratch<'de, 's, R: Read<'de>>(
+        &self,
+        read: &R,
+        slice: &'s [u8],
+    ) -> Result<&'s str> {
+        match str::from_utf8(slice) {
+            Ok(ref s) => Ok(s),
+            Err(_) => error(read, ErrorCode::InvalidUnicodeCodePoint),
+        }
+    }
+}
+
+struct SubstitutingStrUtfOutputStrategy;
+
+impl SubstitutingStrUtfOutputStrategy {
+    /// Returns whether conversion occurred. If not, output is unchanged
+    /// and the caller should just directly use the input slice.
+    fn from_utf8_lossy(&self, output: &mut Vec<u8>, mut input: &[u8]) -> bool {
+        let mut first = true;
+        loop {
+            match std::str::from_utf8(input) {
+                Ok(valid) => {
+                    if first {
+                        return false;
+                    }
+                    output.extend(valid.as_bytes());
+                    break;
+                }
+                Err(error) => {
+                    let (valid, after_valid) = input.split_at(error.valid_up_to());
+                    output.extend(valid);
+                    output.extend("\u{fffd}".bytes());
+
+                    if let Some(invalid_sequence_length) = error.error_len() {
+                        input = &after_valid[invalid_sequence_length..]
+                    } else {
+                        break;
+                    }
+                }
+            }
+            first = false;
+        }
+        true
+    }
+
+    fn convert_unchecked<'a>(&self, slice: &'a [u8]) -> &'a str {
+        unsafe { &str::from_utf8_unchecked(slice) }
+    }
+}
+
+impl UtfOutputStrategy<str> for SubstitutingStrUtfOutputStrategy {
+    fn to_result_simple<'de, 's, R: Read<'de>>(
+        &self,
+        read: &R,
+        slice: &'s [u8],
+    ) -> Result<&'s str> {
+        convert_or_error(read, slice)
+    }
+
+    fn to_result_direct<'de, 's, R: Read<'de>>(
+        &self,
+        _: &R,
+        slice: &'s [u8],
+        scratch: &'de mut Vec<u8>,
+    ) -> Result<Reference<'s, 'de, str>> {
+        let r = self.from_utf8_lossy(scratch, slice);
+        Ok(if r {
+            Reference::Copied(self.convert_unchecked(scratch))
+        } else {
+            Reference::Borrowed(self.convert_unchecked(slice))
+        })
+    }
+
+    fn to_result_from_scratch<'de, 's, R: Read<'de>>(
+        &self,
+        _: &R,
+        slice: &'s [u8],
+    ) -> Result<&'s str> {
+        // We checked it on the way into the scratch buffer, so no need for further checks now
+        Ok(self.convert_unchecked(slice))
+    }
+
+    fn extend_scratch(&self, scratch: &mut Vec<u8>, slice: &[u8]) {
+        if !self.from_utf8_lossy(scratch, slice) {
+            scratch.extend(slice);
+        }
     }
 }
 
 struct UncheckedStrUtfOutputStrategy;
 
-impl<'s> UtfOutputStrategy<'s, &'s str> for UncheckedStrUtfOutputStrategy {
-    fn to_result<'de, R: Read<'de>>(&self, _: &R, slice: &'s [u8]) -> Result<&'s str> {
+impl UtfOutputStrategy<str> for UncheckedStrUtfOutputStrategy {
+    fn to_result_simple<'de, 's, R: Read<'de>>(&self, _: &R, slice: &'s [u8]) -> Result<&'s str> {
         // The input is assumed to be valid UTF-8 and the \u-escapes are
         // checked along the way, so don't need to check here.
-        Ok(unsafe { str::from_utf8_unchecked(slice) })
+        Ok(unsafe { &str::from_utf8_unchecked(slice) })
     }
 }
 
 struct SliceUtfOutputStrategy;
 
-impl<'s> UtfOutputStrategy<'s, &'s [u8]> for SliceUtfOutputStrategy {
-    fn to_result<'de, R: Read<'de>>(&self, _: &R, slice: &'s [u8]) -> Result<&'s [u8]> {
-        Ok(slice)
+impl UtfOutputStrategy<[u8]> for SliceUtfOutputStrategy {
+    fn to_result_simple<'de, 's, R: Read<'de>>(&self, _: &R, slice: &'s [u8]) -> Result<&'s [u8]> {
+        Ok(&slice)
     }
 }
 
@@ -235,10 +352,10 @@ where
         scratch: &'s mut Vec<u8>,
         validate: bool,
         utf_strategy: S,
-    ) -> Result<T>
+    ) -> Result<&'s T>
     where
-        T: 's,
-        S: UtfOutputStrategy<'s, T>,
+        T: ?Sized,
+        S: UtfOutputStrategy<T>,
     {
         loop {
             let ch = tri!(next_or_eof(self));
@@ -248,7 +365,7 @@ where
             }
             match ch {
                 b'"' => {
-                    return utf_strategy.to_result(self, scratch);
+                    return utf_strategy.to_result_simple(self, scratch);
                 }
                 b'\\' => {
                     tri!(parse_escape(self, scratch));
@@ -348,8 +465,12 @@ where
     }
 
     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'de, 's, str>> {
-        self.parse_str_bytes(scratch, true, StrUtfOutputStrategy)
-            .map(Reference::Copied)
+        if SUBSTITUTE_INVALID_UNICODE_CHARS {
+            self.parse_str_bytes(scratch, true, SubstitutingStrUtfOutputStrategy)
+        } else {
+            self.parse_str_bytes(scratch, true, StrUtfOutputStrategy)
+        }
+        .map(Reference::Copied)
     }
 
     fn parse_str_raw<'s>(
@@ -460,7 +581,7 @@ impl<'a> SliceRead<'a> {
     ) -> Result<Reference<'a, 's, T>>
     where
         T: 's,
-        S: for<'f> UtfOutputStrategy<'f, &'f T>,
+        S: UtfOutputStrategy<T>,
     {
         // Index of the first byte not yet copied into the scratch space.
         let mut start = self.index;
@@ -479,17 +600,17 @@ impl<'a> SliceRead<'a> {
                         // copying.
                         let borrowed = &self.slice[start..self.index];
                         self.index += 1;
-                        return utf_strategy
-                            .to_result(self, borrowed)
-                            .map(Reference::Borrowed);
+                        return utf_strategy.to_result_direct(self, borrowed, scratch);
                     } else {
-                        scratch.extend_from_slice(&self.slice[start..self.index]);
+                        utf_strategy.extend_scratch(scratch, &self.slice[start..self.index]);
                         self.index += 1;
-                        return utf_strategy.to_result(self, scratch).map(Reference::Copied);
+                        return utf_strategy
+                            .to_result_from_scratch(self, scratch)
+                            .map(|r| Reference::Copied(r));
                     }
                 }
                 b'\\' => {
-                    scratch.extend_from_slice(&self.slice[start..self.index]);
+                    utf_strategy.extend_scratch(scratch, &self.slice[start..self.index]);
                     self.index += 1;
                     tri!(parse_escape(self, scratch));
                     start = self.index;
@@ -552,7 +673,11 @@ impl<'a> Read<'a> for SliceRead<'a> {
     }
 
     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'a, 's, str>> {
-        self.parse_str_bytes(scratch, true, StrUtfOutputStrategy)
+        if SUBSTITUTE_INVALID_UNICODE_CHARS {
+            self.parse_str_bytes(scratch, true, SubstitutingStrUtfOutputStrategy)
+        } else {
+            self.parse_str_bytes(scratch, true, StrUtfOutputStrategy)
+        }
     }
 
     fn parse_str_raw<'s>(
