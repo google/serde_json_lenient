@@ -2226,11 +2226,11 @@ fn test_boxed_raw_value() {
 #[cfg(feature = "raw_value")]
 #[test]
 fn test_raw_invalid_utf8() {
-    use serde_json::value::RawValue;
+    use serde_jsonrc::value::RawValue;
 
     let j = &[b'"', b'\xCE', b'\xF8', b'"'];
-    let value_err = serde_json::from_slice::<Value>(j).unwrap_err();
-    let raw_value_err = serde_json::from_slice::<Box<RawValue>>(j).unwrap_err();
+    let value_err = serde_jsonrc::from_slice::<Value>(j).unwrap_err();
+    let raw_value_err = serde_jsonrc::from_slice::<Box<RawValue>>(j).unwrap_err();
 
     assert_eq!(
         value_err.to_string(),
