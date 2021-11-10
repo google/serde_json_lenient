@@ -1957,10 +1957,7 @@ impl<'de, 'a, R: Read<'de> + 'a> de::SeqAccess<'de> for SeqAccess<'a, R> {
             Some(b) => {
                 // List most common branch first.
                 if b != b']' {
-                    let result = Ok(Some(tri!(seed.deserialize(&mut *self.de))));
-                    if result.is_err() {
-                        return result;
-                    }
+                    let result = tri!(seed.deserialize(&mut *self.de));
 
                     match tri!(self.de.parse_whitespace()) {
                         Some(b',') => self.de.eat_char(),
@@ -1974,7 +1971,7 @@ impl<'de, 'a, R: Read<'de> + 'a> de::SeqAccess<'de> for SeqAccess<'a, R> {
                             return Err(self.de.peek_error(ErrorCode::EofWhileParsingList));
                         }
                     }
-                    result
+                    Ok(Some(result))
                 } else {
                     Ok(None)
                 }
