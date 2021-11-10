@@ -1,5 +1,5 @@
 [package]
-name = "serde_json-fuzz"
+name = "serde_jsonrc-fuzz"
 version = "0.0.0"
 authors = ["David Korczynski <david@adalogics.com>"]
 publish = false
@@ -10,7 +10,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-serde_json = { path = ".." }
+serde_jsonrc = { path = ".." }
 
 [[bin]]
 name = "from_slice"
