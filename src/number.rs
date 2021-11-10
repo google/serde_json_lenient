@@ -16,19 +16,55 @@ use serde::de::{IntoDeserializer, MapAccess};
 pub(crate) const TOKEN: &str = "$serde_jsonrc::private::Number";
 
 /// Represents a JSON number, whether integer or floating point.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Number {
     n: N,
 }
 
 #[cfg(not(feature = "arbitrary_precision"))]
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone)]
 enum N {
     PosInt(u64),
     /// Always less than zero.
     NegInt(i64),
     /// Always finite.
     Float(f64),
+}
+
+#[cfg(not(feature = "arbitrary_precision"))]
+impl PartialEq for N {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (N::PosInt(a), N::PosInt(b)) => a == b,
+            (N::NegInt(a), N::NegInt(b)) => a == b,
+            (N::Float(a), N::Float(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+// Implementing Eq is fine since any float values are always finite.
+#[cfg(not(feature = "arbitrary_precision"))]
+impl Eq for N {}
+
+#[cfg(not(feature = "arbitrary_precision"))]
+impl Hash for N {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        match *self {
+            N::PosInt(i) => i.hash(h),
+            N::NegInt(i) => i.hash(h),
+            N::Float(f) => {
+                if f == 0.0f64 {
+                    // There are 2 zero representations, +0 and -0, which
+                    // compare equal but have different bits. We use the +0 hash
+                    // for both so that hash(+0) == hash(-0).
+                    0.0f64.to_bits().hash(h);
+                } else {
+                    f.to_bits().hash(h);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(feature = "arbitrary_precision")]
@@ -126,7 +162,7 @@ impl Number {
         {
             for c in self.n.chars() {
                 if c == '.' || c == 'e' || c == 'E' {
-                    return self.n.parse::<f64>().ok().map_or(false, |f| f.is_finite());
+                    return self.n.parse::<f64>().ok().map_or(false, f64::is_finite);
                 }
             }
             false
@@ -207,7 +243,7 @@ impl Number {
             N::Float(n) => Some(n),
         }
         #[cfg(feature = "arbitrary_precision")]
-        self.n.parse().ok()
+        self.n.parse::<f64>().ok().filter(|float| float.is_finite())
     }
 
     /// Converts a finite `f64` to a `Number`. Infinite or NaN values are not JSON
@@ -235,7 +271,7 @@ impl Number {
                     ryu::Buffer::new().format_finite(f).to_owned()
                 }
             };
-            Some(Number { n: n })
+            Some(Number { n })
         } else {
             None
         }
@@ -246,7 +282,7 @@ impl Number {
     #[doc(hidden)]
     #[inline]
     pub fn from_string_unchecked(n: String) -> Self {
-        Number { n: n }
+        Number { n }
     }
 }
 
@@ -286,7 +322,10 @@ impl Debug for Number {
 
     #[cfg(feature = "arbitrary_precision")]
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "Number({})", &self.n)
+        formatter
+            .debug_tuple("Number")
+            .field(&format_args!("{}", self.n))
+            .finish()
     }
 }
 
@@ -505,7 +544,7 @@ macro_rules! deserialize_number {
         {
             visitor.$visit(self.n.parse().map_err(|_| invalid_number())?)
         }
-    }
+    };
 }
 
 impl<'de> Deserializer<'de> for Number {
@@ -648,7 +687,7 @@ impl From<ParserNumber> for Number {
             #[cfg(feature = "arbitrary_precision")]
             ParserNumber::String(s) => s,
         };
-        Number { n: n }
+        Number { n }
     }
 }
 
@@ -668,7 +707,7 @@ macro_rules! impl_from_unsigned {
                             itoa::Buffer::new().format(u).to_owned()
                         }
                     };
-                    Number { n: n }
+                    Number { n }
                 }
             }
         )*
@@ -697,7 +736,7 @@ macro_rules! impl_from_signed {
                             itoa::Buffer::new().format(i).to_owned()
                         }
                     };
-                    Number { n: n }
+                    Number { n }
                 }
             }
         )*
