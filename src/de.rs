@@ -1958,7 +1958,7 @@ impl<'de, 'a, R: Read<'de> + 'a> de::SeqAccess<'de> for SeqAccess<'a, R> {
                 // List most common branch first.
                 if b != b']' {
                     let result = Ok(Some(tri!(seed.deserialize(&mut *self.de))));
-                    if !result.is_ok() {
+                    if result.is_err() {
                         return result;
                     }
 
@@ -2004,7 +2004,7 @@ impl<'de, 'a, R: Read<'de> + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
         match tri!(self.de.parse_whitespace()) {
             Some(b'"') => seed.deserialize(MapKey { de: &mut *self.de }).map(Some),
             Some(b'}') => {
-                return Ok(None);
+                Ok(None)
             }
             Some(_) => Err(self.de.peek_error(ErrorCode::KeyMustBeAString)),
             None => Err(self.de.peek_error(ErrorCode::EofWhileParsingObject)),
