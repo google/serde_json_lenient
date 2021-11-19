@@ -942,7 +942,7 @@ where
     }
 
     fn replace_invalid_unicode(&self) -> bool {
-        false
+        R::replace_invalid_unicode(self)
     }
 }
 
