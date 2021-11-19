@@ -1052,14 +1052,6 @@ fn test_parse_string() {
             "\"\\uD83C\\uFFFF\"",
             "lone leading surrogate in hex escape at line 1 column 13",
         ),
-        (
-            "\"\n\"",
-            "control character (\\u0000-\\u001F) found while parsing a string at line 2 column 0",
-        ),
-        (
-            "\"\x1F\"",
-            "control character (\\u0000-\\u001F) found while parsing a string at line 1 column 2",
-        ),
     ]);
 
     test_parse_slice_err::<String>(&[
@@ -1090,14 +1082,6 @@ fn test_parse_string() {
         (
             &[b'"', b'\\', b'u', 48, 48, 51, 250, b'"'],
             "invalid escape at line 1 column 7",
-        ),
-        (
-            &[b'"', b'\n', b'"'],
-            "control character (\\u0000-\\u001F) found while parsing a string at line 2 column 0",
-        ),
-        (
-            &[b'"', b'\x1F', b'"'],
-            "control character (\\u0000-\\u001F) found while parsing a string at line 1 column 2",
         ),
     ]);
 
