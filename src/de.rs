@@ -1651,7 +1651,7 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     ///
     ///     assert!(parsed.is_err());
     ///
-    ///     let expected_msg = "unexpected end of hex escape at line 1 column 35";
+    ///     let expected_msg = "unexpected end of hex escape at line 1 column 34";
     ///     assert_eq!(expected_msg, parsed.unwrap_err().to_string());
     /// }
     /// #
