@@ -136,6 +136,22 @@ impl<'a> From<Cow<'a, str>> for Value {
     }
 }
 
+impl From<Number> for Value {
+    /// Convert `Number` to `Value`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use serde_jsonrc::{Number, Value};
+    ///
+    /// let n = Number::from(7);
+    /// let x: Value = n.into();
+    /// ```
+    fn from(f: Number) -> Self {
+        Value::Number(f)
+    }
+}
+
 impl From<Map<String, Value>> for Value {
     /// Convert map (with string keys) to `Value`
     ///
@@ -212,6 +228,26 @@ impl<T: Into<Value>> FromIterator<T> for Value {
     /// ```
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Value::Array(iter.into_iter().map(Into::into).collect())
+    }
+}
+
+impl<K: Into<String>, V: Into<Value>> FromIterator<(K, V)> for Value {
+    /// Convert an iteratable type to a `Value`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use serde_jsonrc::Value;
+    ///
+    /// let v: Vec<_> = vec![("lorem", 40), ("ipsum", 2)];
+    /// let x: Value = v.into_iter().collect();
+    /// ```
+    fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
+        Value::Object(
+            iter.into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect(),
+        )
     }
 }
 

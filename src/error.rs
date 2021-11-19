@@ -243,7 +243,7 @@ pub(crate) enum ErrorCode {
     /// JSON has non-whitespace trailing characters after the value.
     TrailingCharacters,
 
-    /// Unexpected end of hex excape.
+    /// Unexpected end of hex escape.
     UnexpectedEndOfHexEscape,
 
     /// Encountered nesting of JSON maps and arrays more than 128 layers deep.
@@ -254,11 +254,7 @@ impl Error {
     #[cold]
     pub(crate) fn syntax(code: ErrorCode, line: usize, column: usize) -> Self {
         Error {
-            err: Box::new(ErrorImpl {
-                code: code,
-                line: line,
-                column: column,
-            }),
+            err: Box::new(ErrorImpl { code, line, column }),
         }
     }
 
@@ -401,8 +397,8 @@ fn make_error(mut msg: String) -> Error {
     Error {
         err: Box::new(ErrorImpl {
             code: ErrorCode::Message(msg.into_boxed_str()),
-            line: line,
-            column: column,
+            line,
+            column,
         }),
     }
 }
