@@ -1,5 +1,17 @@
 #![cfg(not(feature = "preserve_order"))]
-#![allow(clippy::float_cmp, clippy::unreadable_literal)]
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::excessive_precision,
+    clippy::float_cmp,
+    clippy::items_after_statements,
+    clippy::let_underscore_drop,
+    clippy::shadow_unrelated,
+    clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::unseparated_literal_suffix,
+    clippy::vec_init_then_push,
+    clippy::zero_sized_map_values
+)]
 #![cfg_attr(feature = "trace-macros", feature(trace_macros))]
 #[cfg(feature = "trace-macros")]
 trace_macros!(true);
@@ -15,8 +27,10 @@ use serde_jsonrc::{
     from_reader, from_slice, from_str, from_value, json, to_string, to_string_pretty, to_value,
     to_vec, to_writer, Deserializer, Number, Value,
 };
+use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeMap;
 use std::fmt::{self, Debug};
+use std::hash::{Hash, Hasher};
 use std::io;
 use std::iter;
 use std::marker::PhantomData;
@@ -431,7 +445,7 @@ fn test_write_object() {
     )]);
 
     test_pretty_encode_ok(&[(
-        complex_obj.clone(),
+        complex_obj,
         pretty_str!({
             "b": [
                 {
@@ -731,6 +745,8 @@ fn test_parse_number_errors() {
         ("00", "invalid number at line 1 column 2"),
         ("0x80", "trailing characters at line 1 column 2"),
         ("\\0", "expected value at line 1 column 1"),
+        (".0", "expected value at line 1 column 1"),
+        ("0.", "EOF while parsing a value at line 1 column 2"),
         ("1.", "EOF while parsing a value at line 1 column 2"),
         ("1.a", "invalid number at line 1 column 3"),
         ("1.e1", "invalid number at line 1 column 3"),
@@ -799,6 +815,7 @@ fn test_parse_u64() {
 #[test]
 fn test_parse_negative_zero() {
     for negative_zero in &[
+        "-0",
         "-0.0",
         "-0e2",
         "-0.0e2",
@@ -806,9 +823,14 @@ fn test_parse_negative_zero() {
         "-1e-4000000000000000000000000000000000000000000000000",
     ] {
         assert!(
+            from_str::<f32>(negative_zero).unwrap().is_sign_negative(),
+            "should have been negative: {:?}",
+            negative_zero,
+        );
+        assert!(
             from_str::<f64>(negative_zero).unwrap().is_sign_negative(),
             "should have been negative: {:?}",
-            negative_zero
+            negative_zero,
         );
     }
 }
@@ -821,6 +843,9 @@ fn test_parse_f64() {
         ("3.1", 3.1),
         ("-1.2", -1.2),
         ("0.4", 0.4),
+        // Edge case from:
+        // https://github.com/serde-rs/json/issues/536#issuecomment-583714900
+        ("2.638344616030823e-256", 2.638344616030823e-256),
     ]);
 
     #[cfg(not(feature = "arbitrary_precision"))]
@@ -840,6 +865,7 @@ fn test_parse_f64() {
         ("0.00e+00", 0.0),
         ("0.00e-00", 0.0),
         ("3.5E-2147483647", 0.0),
+        ("0.0100000000000000000001", 0.01),
         (
             &format!("{}", (i64::MIN as f64) - 1.0),
             (i64::MIN as f64) - 1.0,
@@ -903,6 +929,53 @@ fn test_parse_f64() {
 }
 
 #[test]
+fn test_value_as_f64() {
+    let v = serde_jsonrc::from_str::<Value>("1e1000");
+
+    #[cfg(not(feature = "arbitrary_precision"))]
+    assert!(v.is_err());
+
+    #[cfg(feature = "arbitrary_precision")]
+    assert_eq!(v.unwrap().as_f64(), None);
+}
+
+// Test roundtrip with some values that were not perfectly roundtripped by the
+// old f64 deserializer.
+#[cfg(feature = "float_roundtrip")]
+#[test]
+fn test_roundtrip_f64() {
+    for &float in &[
+        // Samples from quickcheck-ing roundtrip with `input: f64`. Comments
+        // indicate the value returned by the old deserializer.
+        51.24817837550540_4,  // 51.2481783755054_1
+        -93.3113703768803_3,  // -93.3113703768803_2
+        -36.5739948427534_36, // -36.5739948427534_4
+        52.31400820410624_4,  // 52.31400820410624_
+        97.4536532003468_5,   // 97.4536532003468_4
+        // Samples from `rng.next_u64` + `f64::from_bits` + `is_finite` filter.
+        2.0030397744267762e-253,
+        7.101215824554616e260,
+        1.769268377902049e74,
+        -1.6727517818542075e58,
+        3.9287532173373315e299,
+    ] {
+        let json = serde_jsonrc::to_string(&float).unwrap();
+        let output: f64 = serde_jsonrc::from_str(&json).unwrap();
+        assert_eq!(float, output);
+    }
+}
+
+#[test]
+fn test_roundtrip_f32() {
+    // This number has 1 ULP error if parsed via f64 and converted to f32.
+    // https://github.com/serde-rs/json/pull/671#issuecomment-628534468
+    let float = 7.038531e-26;
+    let json = serde_jsonrc::to_string(&float).unwrap();
+    let output: f32 = serde_jsonrc::from_str(&json).unwrap();
+    assert_eq!(float, output);
+}
+
+#[test]
 fn test_serialize_char() {
     let value = json!(
         ({
@@ -950,8 +1023,14 @@ fn test_parse_number() {
     #[cfg(feature = "arbitrary_precision")]
     test_parse_ok(vec![
         ("1e999", Number::from_string_unchecked("1e999".to_owned())),
+        ("1e+999", Number::from_string_unchecked("1e+999".to_owned())),
         ("-1e999", Number::from_string_unchecked("-1e999".to_owned())),
         ("1e-999", Number::from_string_unchecked("1e-999".to_owned())),
+        ("1E999", Number::from_string_unchecked("1E999".to_owned())),
+        ("1E+999", Number::from_string_unchecked("1E+999".to_owned())),
+        ("-1E999", Number::from_string_unchecked("-1E999".to_owned())),
+        ("1E-999", Number::from_string_unchecked("1E-999".to_owned())),
+        ("1E+000", Number::from_string_unchecked("1E+000".to_owned())),
         (
             "2.3e999",
             Number::from_string_unchecked("2.3e999".to_owned()),
@@ -1451,8 +1530,7 @@ fn test_serialize_map_with_no_len() {
             use serde::ser::SerializeMap;
             let mut map = serializer.serialize_map(None)?;
             for (k, v) in &self.0 {
-                map.serialize_key(k)?;
-                map.serialize_value(v)?;
+                map.serialize_entry(k, v)?;
             }
             map.end()
         }
@@ -1734,7 +1812,7 @@ fn test_stack_overflow() {
         .collect();
     let _: Value = from_str(&brackets).unwrap();
 
-    let brackets: String = iter::repeat('[').take(129).collect();
+    let brackets = "[".repeat(129);
     test_parse_err::<Value>(&[(&brackets, "recursion limit exceeded at line 1 column 128")]);
 }
 
@@ -2058,7 +2136,7 @@ fn test_borrowed_raw_value() {
         #[serde(borrow)]
         b: &'a RawValue,
         c: i8,
-    };
+    }
 
     let wrapper_from_str: Wrapper =
         serde_jsonrc::from_str(r#"{"a": 1, "b": {"foo": 2}, "c": 3}"#).unwrap();
@@ -2091,7 +2169,7 @@ fn test_boxed_raw_value() {
         a: i8,
         b: Box<RawValue>,
         c: i8,
-    };
+    }
 
     let wrapper_from_str: Wrapper =
         serde_jsonrc::from_str(r#"{"a": 1, "b": {"foo": 2}, "c": 3}"#).unwrap();
@@ -2129,10 +2207,30 @@ fn test_boxed_raw_value() {
     assert_eq!(r#"["a",42,{"foo": "bar"},null]"#, array_to_string);
 }
 
+#[cfg(feature = "raw_value")]
+#[test]
+fn test_raw_invalid_utf8() {
+    use serde_jsonrc::value::RawValue;
+
+    let j = &[b'"', b'\xCE', b'\xF8', b'"'];
+    let value_err = serde_jsonrc::from_slice::<Value>(j).unwrap_err();
+    let raw_value_err = serde_jsonrc::from_slice::<Box<RawValue>>(j).unwrap_err();
+
+    assert_eq!(
+        value_err.to_string(),
+        "invalid unicode code point at line 1 column 4",
+    );
+    assert_eq!(
+        raw_value_err.to_string(),
+        "invalid unicode code point at line 1 column 4",
+    );
+}
+
 #[test]
 fn test_borrow_in_map_key() {
     #[derive(Deserialize, Debug)]
     struct Outer {
+        #[allow(dead_code)]
         map: BTreeMap<MyMapKey, ()>,
     }
 
@@ -2171,4 +2269,23 @@ fn test_value_into_deserializer() {
 
     let outer = Outer::deserialize(map.into_deserializer()).unwrap();
     assert_eq!(outer.inner.string, "Hello World");
+}
+
+#[test]
+fn hash_positive_and_negative_zero() {
+    fn hash(obj: impl Hash) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        obj.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    let k1 = serde_jsonrc::from_str::<Number>("0.0").unwrap();
+    let k2 = serde_jsonrc::from_str::<Number>("-0.0").unwrap();
+    if cfg!(feature = "arbitrary_precision") {
+        assert_ne!(k1, k2);
+        assert_ne!(hash(k1), hash(k2));
+    } else {
+        assert_eq!(k1, k2);
+        assert_eq!(hash(k1), hash(k2));
+    }
 }

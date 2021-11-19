@@ -307,44 +307,65 @@
 //! [to_vec]: https://docs.serde.rs/serde_jsonrc/ser/fn.to_vec.html
 //! [to_writer]: https://docs.serde.rs/serde_jsonrc/ser/fn.to_writer.html
 //! [macro]: https://docs.serde.rs/serde_jsonrc/macro.json.html
-//! [`serde-json-core`]: https://japaric.github.io/serde-json-core/serde_jsonrc_core/
+//! [`serde-json-core`]: https://github.com/rust-embedded-community/serde-json-core
 
 #![doc(html_root_url = "https://docs.rs/serde_jsonrc/0.1.2")]
-#![deny(clippy::all, clippy::pedantic)]
 // Ignored clippy lints
 #![allow(
+    clippy::comparison_chain,
     clippy::deprecated_cfg_attr,
     clippy::doc_markdown,
+    clippy::excessive_precision,
+    clippy::float_cmp,
+    clippy::manual_range_contains,
+    clippy::match_like_matches_macro,
+    clippy::match_single_binding,
     clippy::needless_doctest_main,
-    clippy::transmute_ptr_to_ptr
+    clippy::transmute_ptr_to_ptr,
+    clippy::unnecessary_wraps,
+    // clippy bug: https://github.com/rust-lang/rust-clippy/issues/5704
+    clippy::unnested_or_patterns,
 )]
 // Ignored clippy_pedantic lints
 #![allow(
     // Deserializer::from_str, into_iter
     clippy::should_implement_trait,
     // integer and float ser/de requires these sorts of casts
+    clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
     // correctly used
+    clippy::enum_glob_use,
+    clippy::if_not_else,
     clippy::integer_division,
+    clippy::map_err_ignore,
+    clippy::match_same_arms,
+    clippy::similar_names,
+    clippy::unused_self,
+    clippy::wildcard_imports,
     // things are often more readable this way
     clippy::cast_lossless,
     clippy::module_name_repetitions,
+    clippy::redundant_else,
     clippy::shadow_unrelated,
     clippy::single_match_else,
     clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::unseparated_literal_suffix,
     clippy::use_self,
     clippy::zero_prefixed_literal,
     // we support older compilers
     clippy::checked_conversions,
-    clippy::redundant_field_names,
+    clippy::mem_replace_with_default,
     // noisy
     clippy::missing_errors_doc,
     clippy::must_use_candidate,
 )]
+#![allow(non_upper_case_globals)]
 #![deny(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -367,8 +388,10 @@ mod lib {
     pub use self::core::convert::{self, From, Into};
     pub use self::core::default::{self, Default};
     pub use self::core::fmt::{self, Debug, Display};
-    pub use self::core::hash::{self, Hash};
+    pub use self::core::hash::{self, Hash, Hasher};
+    pub use self::core::iter::FusedIterator;
     pub use self::core::marker::{self, PhantomData};
+    pub use self::core::ops::{Bound, RangeBounds};
     pub use self::core::result::{self, Result};
     pub use self::core::{borrow, char, cmp, iter, mem, num, ops, slice, str};
 
@@ -427,6 +450,9 @@ macro_rules! tri {
             crate::lib::Result::Err(err) => return crate::lib::Result::Err(err),
         }
     };
+    ($e:expr,) => {
+        tri!($e)
+    };
 }
 
 #[macro_use]
@@ -436,6 +462,7 @@ pub mod de;
 pub mod error;
 pub mod map;
 #[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 pub mod ser;
 #[cfg(not(feature = "std"))]
 mod ser;
@@ -446,6 +473,8 @@ mod features_check;
 mod io;
 #[cfg(feature = "std")]
 mod iter;
+#[cfg(feature = "float_roundtrip")]
+mod lexical;
 mod number;
 mod read;
 

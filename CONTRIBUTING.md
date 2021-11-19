@@ -4,11 +4,6 @@ Serde welcomes contribution from everyone in the form of suggestions, bug
 reports, pull requests, and feedback. This document gives some guidance if you
 are thinking of helping us.
 
-Please reach out here in a GitHub issue or in the #serde IRC channel on
-[`irc.mozilla.org`] if we can do anything to help you contribute.
-
-[`irc.mozilla.org`]: https://wiki.mozilla.org/IRC
-
 ## Submitting bug reports and feature requests
 
 Serde development is spread across lots of repositories. In general, prefer to
@@ -37,21 +32,10 @@ tests for you.
 
 The test suite requires a nightly compiler.
 
-##### In the [`tests/deps`] directory
-
-```sh
-# This is a prerequisite for running the full test suite
-cargo clean && cargo update && cargo build
-```
-
-##### In the top level serde-json directory
-
 ```sh
 # Run the full test suite, including doc test and compile-tests
 cargo test
 ```
-
-[`tests/deps`]: https://github.com/serde-rs/json/tree/master/tests/deps
 
 ## Conduct
 
@@ -59,4 +43,4 @@ In all Serde-related forums, we follow the [Rust Code of Conduct]. For
 escalation or moderation issues please contact Erick (erick.tryzelaar@gmail.com)
 instead of the Rust moderation team.
 
-[Rust Code of Conduct]: https://www.rust-lang.org/conduct.html
+[Rust Code of Conduct]: https://www.rust-lang.org/policies/code-of-conduct
