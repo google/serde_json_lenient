@@ -747,8 +747,8 @@ where
         R::ignore_str(self)
     }
 
-    fn decode_hex_escape(&mut self) -> Result<u16> {
-        R::decode_hex_escape(self)
+    fn decode_hex_escape(&mut self, num_digits: usize) -> Result<u16> {
+        R::decode_hex_escape(self, num_digits)
     }
 
     #[cfg(feature = "raw_value")]
