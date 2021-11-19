@@ -98,6 +98,9 @@ pub trait Read<'de>: private::Sealed {
     where
         V: Visitor<'de>;
 
+    /// Whether we should replace invalid unicode characters with \u{fffd}.
+    fn replace_invalid_unicode(&self) -> bool;
+
     /// Whether StreamDeserializer::next needs to check the failed flag. True
     /// for IoRead, false for StrRead and SliceRead which can track failure by
     /// truncating their input slice to avoid the extra check on every next
@@ -138,6 +141,157 @@ where
     }
 }
 
+/// Trait used by parse_str_bytes to convert the resulting bytes
+/// into a string-like thing. Depending on the original caller, this may
+
+/// be a &str or a &[u8].
+trait UtfOutputStrategy<T: ?Sized> {
+    fn to_result_simple<'de, 's, R: Read<'de>>(&self, read: &R, slice: &'s [u8]) -> Result<&'s T>;
+
+    fn to_result_direct<'de, 's, R: Read<'de>>(
+        &self,
+        read: &R,
+        slice: &'s [u8],
+        _: &'de mut Vec<u8>,
+    ) -> Result<Reference<'s, 'de, T>> {
+        self.to_result_simple(read, slice)
+            .map(|r| Reference::Borrowed(r))
+    }
+
+    fn to_result_from_scratch<'de, 's, R: Read<'de>>(
+        &self,
+        read: &R,
+        slice: &'s [u8],
+    ) -> Result<&'s T> {
+        self.to_result_simple(read, slice)
+    }
+    fn extend_scratch(&self, scratch: &mut Vec<u8>, slice: &[u8]) {
+        scratch.extend(slice);
+    }
+}
+
+fn convert_or_error<'de, 's, R: Read<'de>>(read: &R, slice: &'s [u8]) -> Result<&'s str> {
+    str::from_utf8(slice).or_else(|_| error(read, ErrorCode::InvalidUnicodeCodePoint))
+}
+
+struct StrUtfOutputStrategy;
+
+impl UtfOutputStrategy<str> for StrUtfOutputStrategy {
+    fn to_result_simple<'de, 's, R: Read<'de>>(
+        &self,
+        read: &R,
+        slice: &'s [u8],
+    ) -> Result<&'s str> {
+        convert_or_error(read, slice)
+    }
+
+    fn to_result_from_scratch<'de, 's, R: Read<'de>>(
+        &self,
+        read: &R,
+        slice: &'s [u8],
+    ) -> Result<&'s str> {
+        match str::from_utf8(slice) {
+            Ok(ref s) => Ok(s),
+            Err(_) => error(read, ErrorCode::InvalidUnicodeCodePoint),
+        }
+    }
+}
+
+struct SubstitutingStrUtfOutputStrategy;
+
+impl SubstitutingStrUtfOutputStrategy {
+    /// Returns whether conversion occurred. If not, output is unchanged
+    /// and the caller should just directly use the input slice.
+    fn from_utf8_lossy(&self, output: &mut Vec<u8>, mut input: &[u8]) -> bool {
+        let mut first = true;
+        loop {
+            match std::str::from_utf8(input) {
+                Ok(valid) => {
+                    if first {
+                        return false;
+                    }
+                    output.extend(valid.as_bytes());
+                    break;
+                }
+                Err(error) => {
+                    let (valid, after_valid) = input.split_at(error.valid_up_to());
+                    output.extend(valid);
+                    output.extend("\u{fffd}".bytes());
+
+                    if let Some(invalid_sequence_length) = error.error_len() {
+                        input = &after_valid[invalid_sequence_length..]
+                    } else {
+                        break;
+                    }
+                }
+            }
+            first = false;
+        }
+        true
+    }
+
+    fn convert_unchecked<'a>(&self, slice: &'a [u8]) -> &'a str {
+        unsafe { &str::from_utf8_unchecked(slice) }
+    }
+}
+
+impl UtfOutputStrategy<str> for SubstitutingStrUtfOutputStrategy {
+    fn to_result_simple<'de, 's, R: Read<'de>>(
+        &self,
+        read: &R,
+        slice: &'s [u8],
+    ) -> Result<&'s str> {
+        convert_or_error(read, slice)
+    }
+
+    fn to_result_direct<'de, 's, R: Read<'de>>(
+        &self,
+        _: &R,
+        slice: &'s [u8],
+        scratch: &'de mut Vec<u8>,
+    ) -> Result<Reference<'s, 'de, str>> {
+        let r = self.from_utf8_lossy(scratch, slice);
+        Ok(if r {
+            Reference::Copied(self.convert_unchecked(scratch))
+        } else {
+            Reference::Borrowed(self.convert_unchecked(slice))
+        })
+    }
+
+    fn to_result_from_scratch<'de, 's, R: Read<'de>>(
+        &self,
+        _: &R,
+        slice: &'s [u8],
+    ) -> Result<&'s str> {
+        // We checked it on the way into the scratch buffer, so no need for further checks now
+        Ok(self.convert_unchecked(slice))
+    }
+
+    fn extend_scratch(&self, scratch: &mut Vec<u8>, slice: &[u8]) {
+        if !self.from_utf8_lossy(scratch, slice) {
+            scratch.extend(slice);
+        }
+    }
+}
+
+struct UncheckedStrUtfOutputStrategy;
+
+impl UtfOutputStrategy<str> for UncheckedStrUtfOutputStrategy {
+    fn to_result_simple<'de, 's, R: Read<'de>>(&self, _: &R, slice: &'s [u8]) -> Result<&'s str> {
+        // The input is assumed to be valid UTF-8 and the \u-escapes are
+        // checked along the way, so don't need to check here.
+        Ok(unsafe { &str::from_utf8_unchecked(slice) })
+    }
+}
+
+struct SliceUtfOutputStrategy;
+
+impl UtfOutputStrategy<[u8]> for SliceUtfOutputStrategy {
+    fn to_result_simple<'de, 's, R: Read<'de>>(&self, _: &R, slice: &'s [u8]) -> Result<&'s [u8]> {
+        Ok(&slice)
+    }
+}
+
 /// JSON input source that reads from a std::io input stream.
 #[cfg(feature = "std")]
 #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
@@ -160,6 +314,7 @@ pub struct SliceRead<'a> {
     slice: &'a [u8],
     /// Index of the *next* byte that will be returned by next() or peek().
     index: usize,
+    replace_invalid_characters: bool,
     #[cfg(feature = "raw_value")]
     raw_buffering_start_index: usize,
 }
@@ -204,15 +359,15 @@ impl<R> IoRead<R>
 where
     R: io::Read,
 {
-    fn parse_str_bytes<'s, T, F>(
+    fn parse_str_bytes<'s, T, S>(
         &'s mut self,
         scratch: &'s mut Vec<u8>,
         validate: bool,
-        result: F,
-    ) -> Result<T>
+        utf_strategy: S,
+    ) -> Result<&'s T>
     where
-        T: 's,
-        F: FnOnce(&'s Self, &'s [u8]) -> Result<T>,
+        T: ?Sized,
+        S: UtfOutputStrategy<T>,
     {
         loop {
             let ch = tri!(next_or_eof(self));
@@ -222,7 +377,7 @@ where
             }
             match ch {
                 b'"' => {
-                    return result(self, scratch);
+                    return utf_strategy.to_result_simple(self, scratch);
                 }
                 b'\\' => {
                     tri!(parse_escape(self, scratch));
@@ -243,6 +398,10 @@ impl<'de, R> Read<'de> for IoRead<R>
 where
     R: io::Read,
 {
+    fn replace_invalid_unicode(&self) -> bool {
+        false
+    }
+
     #[inline]
     fn next(&mut self) -> Result<Option<u8>> {
         match self.ch.take() {
@@ -322,7 +481,7 @@ where
     }
 
     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'de, 's, str>> {
-        self.parse_str_bytes(scratch, true, as_str)
+        self.parse_str_bytes(scratch, true, StrUtfOutputStrategy)
             .map(Reference::Copied)
     }
 
@@ -330,7 +489,7 @@ where
         &'s mut self,
         scratch: &'s mut Vec<u8>,
     ) -> Result<Reference<'de, 's, [u8]>> {
-        self.parse_str_bytes(scratch, false, |_, bytes| Ok(bytes))
+        self.parse_str_bytes(scratch, false, SliceUtfOutputStrategy)
             .map(Reference::Copied)
     }
 
@@ -400,10 +559,11 @@ where
 
 impl<'a> SliceRead<'a> {
     /// Create a JSON input source to read from a slice of bytes.
-    pub fn new(slice: &'a [u8]) -> Self {
+    pub fn new(slice: &'a [u8], replace_invalid_characters: bool) -> Self {
         SliceRead {
             slice,
             index: 0,
+            replace_invalid_characters,
             #[cfg(feature = "raw_value")]
             raw_buffering_start_index: 0,
         }
@@ -428,15 +588,15 @@ impl<'a> SliceRead<'a> {
     /// The big optimization here over IoRead is that if the string contains no
     /// backslash escape sequences, the returned &str is a slice of the raw JSON
     /// data so we avoid copying into the scratch space.
-    fn parse_str_bytes<'s, T, F>(
+    fn parse_str_bytes<'s, T, S>(
         &'s mut self,
         scratch: &'s mut Vec<u8>,
         validate: bool,
-        result: F,
+        utf_strategy: S,
     ) -> Result<Reference<'a, 's, T>>
     where
         T: ?Sized + 's,
-        F: for<'f> FnOnce(&'s Self, &'f [u8]) -> Result<&'f T>,
+        S: UtfOutputStrategy<T>,
     {
         // Index of the first byte not yet copied into the scratch space.
         let mut start = self.index;
@@ -455,15 +615,17 @@ impl<'a> SliceRead<'a> {
                         // copying.
                         let borrowed = &self.slice[start..self.index];
                         self.index += 1;
-                        return result(self, borrowed).map(Reference::Borrowed);
+                        return utf_strategy.to_result_direct(self, borrowed, scratch);
                     } else {
-                        scratch.extend_from_slice(&self.slice[start..self.index]);
+                        utf_strategy.extend_scratch(scratch, &self.slice[start..self.index]);
                         self.index += 1;
-                        return result(self, scratch).map(Reference::Copied);
+                        return utf_strategy
+                            .to_result_from_scratch(self, scratch)
+                            .map(|r| Reference::Copied(r));
                     }
                 }
                 b'\\' => {
-                    scratch.extend_from_slice(&self.slice[start..self.index]);
+                    utf_strategy.extend_scratch(scratch, &self.slice[start..self.index]);
                     self.index += 1;
                     tri!(parse_escape(self, scratch));
                     start = self.index;
@@ -482,6 +644,10 @@ impl<'a> SliceRead<'a> {
 impl<'a> private::Sealed for SliceRead<'a> {}
 
 impl<'a> Read<'a> for SliceRead<'a> {
+    fn replace_invalid_unicode(&self) -> bool {
+        self.replace_invalid_characters
+    }
+
     #[inline]
     fn next(&mut self) -> Result<Option<u8>> {
         // `Ok(self.slice.get(self.index).map(|ch| { self.index += 1; *ch }))`
@@ -526,14 +692,18 @@ impl<'a> Read<'a> for SliceRead<'a> {
     }
 
     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'a, 's, str>> {
-        self.parse_str_bytes(scratch, true, as_str)
+        if self.replace_invalid_characters {
+            self.parse_str_bytes(scratch, true, SubstitutingStrUtfOutputStrategy)
+        } else {
+            self.parse_str_bytes(scratch, true, StrUtfOutputStrategy)
+        }
     }
 
     fn parse_str_raw<'s>(
         &'s mut self,
         scratch: &'s mut Vec<u8>,
     ) -> Result<Reference<'a, 's, [u8]>> {
-        self.parse_str_bytes(scratch, false, |_, bytes| Ok(bytes))
+        self.parse_str_bytes(scratch, false, SliceUtfOutputStrategy)
     }
 
     fn ignore_str(&mut self) -> Result<()> {
@@ -615,7 +785,7 @@ impl<'a> StrRead<'a> {
     /// Create a JSON input source to read from a UTF-8 string.
     pub fn new(s: &'a str) -> Self {
         StrRead {
-            delegate: SliceRead::new(s.as_bytes()),
+            delegate: SliceRead::new(s.as_bytes(), false),
             #[cfg(feature = "raw_value")]
             data: s,
         }
@@ -625,6 +795,10 @@ impl<'a> StrRead<'a> {
 impl<'a> private::Sealed for StrRead<'a> {}
 
 impl<'a> Read<'a> for StrRead<'a> {
+    fn replace_invalid_unicode(&self) -> bool {
+        false
+    }
+
     #[inline]
     fn next(&mut self) -> Result<Option<u8>> {
         self.delegate.next()
@@ -653,11 +827,8 @@ impl<'a> Read<'a> for StrRead<'a> {
     }
 
     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'a, 's, str>> {
-        self.delegate.parse_str_bytes(scratch, true, |_, bytes| {
-            // The input is assumed to be valid UTF-8 and the \u-escapes are
-            // checked along the way, so don't need to check here.
-            Ok(unsafe { str::from_utf8_unchecked(bytes) })
-        })
+        self.delegate
+            .parse_str_bytes(scratch, true, UncheckedStrUtfOutputStrategy)
     }
 
     fn parse_str_raw<'s>(
@@ -769,6 +940,10 @@ where
     fn set_failed(&mut self, failed: &mut bool) {
         R::set_failed(self, failed);
     }
+
+    fn replace_invalid_unicode(&self) -> bool {
+        R::replace_invalid_unicode(self)
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -816,6 +991,21 @@ where
     }
 }
 
+fn next_expecting<'de, R: ?Sized + Read<'de>>(
+    read: &mut R,
+    expected: u8,
+    errcode: ErrorCode,
+) -> Result<u8> {
+    match tri!(read.peek()) {
+        Some(b) if b == expected => {
+            read.discard();
+            Ok(b)
+        }
+        Some(_) => error(read, errcode),
+        None => error(read, ErrorCode::EofWhileParsingString),
+    }
+}
+
 fn error<'de, R, T>(read: &R, reason: ErrorCode) -> Result<T>
 where
     R: ?Sized + Read<'de>,
@@ -824,13 +1014,24 @@ where
     Err(Error::syntax(reason, position.line, position.column))
 }
 
-fn as_str<'de, 's, R: Read<'de>>(read: &R, slice: &'s [u8]) -> Result<&'s str> {
-    str::from_utf8(slice).or_else(|_| error(read, ErrorCode::InvalidUnicodeCodePoint))
+fn parse_escape<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) -> Result<()> {
+    let r = parse_escape_or_fail(read, scratch);
+    if read.replace_invalid_unicode() {
+        match r {
+            Ok(a) => Ok(a),
+            Err(_) => {
+                scratch.extend("\u{fffd}".as_bytes());
+                Ok(())
+            }
+        }
+    } else {
+        r
+    }
 }
 
 /// Parses a JSON escape sequence and appends it into the scratch space. Assumes
 /// the previous byte read was a backslash.
-fn parse_escape<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) -> Result<()> {
+fn parse_escape_or_fail<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) -> Result<()> {
     let ch = tri!(next_or_eof(read));
 
     match ch {
@@ -865,12 +1066,16 @@ fn parse_escape<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) -> Resul
                 // Non-BMP characters are encoded as a sequence of
                 // two hex escapes, representing UTF-16 surrogates.
                 n1 @ 0xD800..=0xDBFF => {
-                    if tri!(next_or_eof(read)) != b'\\' {
-                        return error(read, ErrorCode::UnexpectedEndOfHexEscape);
-                    }
-                    if tri!(next_or_eof(read)) != b'u' {
-                        return error(read, ErrorCode::UnexpectedEndOfHexEscape);
-                    }
+                    tri!(next_expecting(
+                        read,
+                        b'\\',
+                        ErrorCode::UnexpectedEndOfHexEscape
+                    ));
+                    tri!(next_expecting(
+                        read,
+                        b'u',
+                        ErrorCode::UnexpectedEndOfHexEscape
+                    ));
 
                     let n2 = tri!(read.decode_hex_escape(4));
 

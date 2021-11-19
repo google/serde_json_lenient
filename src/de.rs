@@ -76,7 +76,13 @@ where
 impl<'a> Deserializer<read::SliceRead<'a>> {
     /// Creates a JSON deserializer from a `&[u8]`.
     pub fn from_slice(bytes: &'a [u8]) -> Self {
-        Deserializer::new(read::SliceRead::new(bytes))
+        Deserializer::new(read::SliceRead::new(bytes, false))
+    }
+
+    /// Creates a JSON deserializer from a `&[u8]`,
+    /// replacing invalid characters.
+    pub fn from_slice_replacing_invalid_characters(bytes: &'a [u8]) -> Self {
+        Deserializer::new(read::SliceRead::new(bytes, true))
     }
 }
 
@@ -1669,7 +1675,7 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     ///
     ///     assert!(parsed.is_err());
     ///
-    ///     let expected_msg = "unexpected end of hex escape at line 1 column 35";
+    ///     let expected_msg = "unexpected end of hex escape at line 1 column 34";
     ///     assert_eq!(expected_msg, parsed.unwrap_err().to_string());
     /// }
     /// #
@@ -2686,7 +2692,7 @@ pub fn from_slice<'a, T>(v: &'a [u8]) -> Result<T>
 where
     T: de::Deserialize<'a>,
 {
-    from_trait(read::SliceRead::new(v))
+    from_trait(read::SliceRead::new(v, false))
 }
 
 /// Deserialize an instance of type `T` from a string of JSON text.
