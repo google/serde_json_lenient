@@ -82,13 +82,13 @@ where
 impl<'a> Deserializer<read::SliceRead<'a>> {
     /// Creates a JSON deserializer from a `&[u8]`.
     pub fn from_slice(bytes: &'a [u8]) -> Self {
-        Deserializer::new(read::SliceRead::new(bytes, false))
+        Deserializer::new(read::SliceRead::new(bytes, false, false))
     }
 
     /// Creates a JSON deserializer from a `&[u8]`,
-    /// replacing invalid characters.
-    pub fn from_slice_replacing_invalid_characters(bytes: &'a [u8]) -> Self {
-        Deserializer::new(read::SliceRead::new(bytes, true))
+    /// providing some flexibility for some non-standard JSON options.
+    pub fn from_slice_with_options(bytes: &'a [u8], replace_invalid_characters: bool, allow_control_characters_in_string: bool) -> Self {
+        Deserializer::new(read::SliceRead::new(bytes, replace_invalid_characters, allow_control_characters_in_string))
     }
 }
 
@@ -2475,7 +2475,7 @@ pub fn from_slice<'a, T>(v: &'a [u8]) -> Result<T>
 where
     T: de::Deserialize<'a>,
 {
-    from_trait(read::SliceRead::new(v, false))
+    from_trait(read::SliceRead::new(v, false, false))
 }
 
 /// Deserialize an instance of type `T` from a string of JSON text.

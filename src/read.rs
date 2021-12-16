@@ -296,6 +296,7 @@ pub struct SliceRead<'a> {
     /// Index of the *next* byte that will be returned by next() or peek().
     index: usize,
     replace_invalid_characters: bool,
+    allow_control_characters_in_string: bool,
     #[cfg(feature = "raw_value")]
     raw_buffering_start_index: usize,
 }
@@ -538,13 +539,14 @@ where
 
 impl<'a> SliceRead<'a> {
     /// Create a JSON input source to read from a slice of bytes.
-    pub fn new(slice: &'a [u8], replace_invalid_characters: bool) -> Self {
+    pub fn new(slice: &'a [u8], replace_invalid_characters: bool, allow_control_characters_in_string: bool) -> Self {
         #[cfg(not(feature = "raw_value"))]
         {
             SliceRead {
                 slice: slice,
                 index: 0,
                 replace_invalid_characters,
+                allow_control_characters_in_string,
             }
         }
         #[cfg(feature = "raw_value")]
@@ -553,9 +555,14 @@ impl<'a> SliceRead<'a> {
                 slice: slice,
                 index: 0,
                 replace_invalid_characters,
+                allow_control_characters_in_string,
                 raw_buffering_start_index: 0,
             }
         }
+    }
+
+    fn escapes(&self) -> [bool;256] {
+        get_escapes(self.allow_control_characters_in_string)
     }
 
     fn position_of_index(&self, i: usize) -> Position {
@@ -591,7 +598,7 @@ impl<'a> SliceRead<'a> {
         let mut start = self.index;
 
         loop {
-            while self.index < self.slice.len() && !ESCAPE[self.slice[self.index] as usize] {
+            while self.index < self.slice.len() && !self.escapes()[self.slice[self.index] as usize] {
                 self.index += 1;
             }
             if self.index == self.slice.len() {
@@ -697,7 +704,7 @@ impl<'a> Read<'a> for SliceRead<'a> {
 
     fn ignore_str(&mut self) -> Result<()> {
         loop {
-            while self.index < self.slice.len() && !ESCAPE[self.slice[self.index] as usize] {
+            while self.index < self.slice.len() && !self.escapes()[self.slice[self.index] as usize] {
                 self.index += 1;
             }
             if self.index == self.slice.len() {
@@ -765,7 +772,7 @@ impl<'a> StrRead<'a> {
         #[cfg(not(feature = "raw_value"))]
         {
             StrRead {
-                delegate: SliceRead::new(s.as_bytes(), false),
+                delegate: SliceRead::new(s.as_bytes(), false, false),
             }
         }
         #[cfg(feature = "raw_value")]
@@ -851,12 +858,13 @@ impl<'a> Read<'a> for StrRead<'a> {
 
 //////////////////////////////////////////////////////////////////////////////
 
-const ALLOW_CONTROL_CHARACTERS_IN_STRING: bool = false;
+const ESCAPE: [bool; 256] = get_escapes(false);
 
 // Lookup table of bytes that must be escaped. A value of true at index i means
 // that byte i requires an escape sequence in the input.
-static ESCAPE: [bool; 256] = {
-    const CT: bool = ALLOW_CONTROL_CHARACTERS_IN_STRING; // control character \x00..=\x1F
+const fn get_escapes(allow_control_characters_in_string: bool) -> [bool; 256] {
+    #[allow(non_snake_case)]
+    let CT: bool = !allow_control_characters_in_string; // control character \x00..=\x1F
     const QU: bool = true; // quote \x22
     const BS: bool = true; // backslash \x5C
     const __: bool = false; // allow unescaped
@@ -879,7 +887,7 @@ static ESCAPE: [bool; 256] = {
         __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // E
         __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // F
     ]
-};
+}
 
 fn next_or_eof<'de, R: ?Sized + Read<'de>>(read: &mut R) -> Result<u8> {
     match tri!(read.next()) {
