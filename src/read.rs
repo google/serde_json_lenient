@@ -100,6 +100,12 @@ pub trait Read<'de>: private::Sealed {
 
     /// Whether we should replace invalid unicode characters with \u{fffd}.
     fn replace_invalid_unicode(&self) -> bool;
+
+    /// Allow \v escapes
+    fn allow_v_escapes(&self) -> bool;
+
+    /// Allow \x escapes
+    fn allow_x_escapes(&self) -> bool;
 }
 
 pub struct Position {
@@ -297,6 +303,8 @@ pub struct SliceRead<'a> {
     index: usize,
     replace_invalid_characters: bool,
     allow_control_characters_in_string: bool,
+    allow_x_escapes: bool,
+    allow_v_escapes: bool,
     #[cfg(feature = "raw_value")]
     raw_buffering_start_index: usize,
 }
@@ -390,6 +398,14 @@ where
     R: io::Read,
 {
     fn replace_invalid_unicode(&self) -> bool {
+        false
+    }
+
+    fn allow_x_escapes(&self) -> bool {
+        false
+    }
+
+    fn allow_v_escapes(&self) -> bool {
         false
     }
 
@@ -539,7 +555,7 @@ where
 
 impl<'a> SliceRead<'a> {
     /// Create a JSON input source to read from a slice of bytes.
-    pub fn new(slice: &'a [u8], replace_invalid_characters: bool, allow_control_characters_in_string: bool) -> Self {
+    pub fn new(slice: &'a [u8], replace_invalid_characters: bool, allow_control_characters_in_string: bool, allow_v_escapes: bool, allow_x_escapes: bool) -> Self {
         #[cfg(not(feature = "raw_value"))]
         {
             SliceRead {
@@ -547,6 +563,8 @@ impl<'a> SliceRead<'a> {
                 index: 0,
                 replace_invalid_characters,
                 allow_control_characters_in_string,
+                allow_v_escapes,
+                allow_x_escapes,
             }
         }
         #[cfg(feature = "raw_value")]
@@ -556,6 +574,8 @@ impl<'a> SliceRead<'a> {
                 index: 0,
                 replace_invalid_characters,
                 allow_control_characters_in_string,
+                allow_v_escapes,
+                allow_x_escapes,
                 raw_buffering_start_index: 0,
             }
         }
@@ -642,6 +662,14 @@ impl<'a> private::Sealed for SliceRead<'a> {}
 impl<'a> Read<'a> for SliceRead<'a> {
     fn replace_invalid_unicode(&self) -> bool {
         self.replace_invalid_characters
+    }
+
+    fn allow_x_escapes(&self) -> bool {
+        self.allow_x_escapes
+    }
+
+    fn allow_v_escapes(&self) -> bool {
+        self.allow_v_escapes
     }
 
     #[inline]
@@ -772,7 +800,7 @@ impl<'a> StrRead<'a> {
         #[cfg(not(feature = "raw_value"))]
         {
             StrRead {
-                delegate: SliceRead::new(s.as_bytes(), false, false),
+                delegate: SliceRead::new(s.as_bytes(), false, false, false, false),
             }
         }
         #[cfg(feature = "raw_value")]
@@ -789,6 +817,14 @@ impl<'a> private::Sealed for StrRead<'a> {}
 
 impl<'a> Read<'a> for StrRead<'a> {
     fn replace_invalid_unicode(&self) -> bool {
+        false
+    }
+
+    fn allow_x_escapes(&self) -> bool {
+        false
+    }
+
+    fn allow_v_escapes(&self) -> bool {
         false
     }
 
@@ -945,8 +981,8 @@ fn parse_escape_or_fail<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) 
         b'n' => scratch.push(b'\n'),
         b'r' => scratch.push(b'\r'),
         b't' => scratch.push(b'\t'),
-        b'v' => scratch.push(b'\x0b'),
-        b'x' => {
+        b'v' if read.allow_v_escapes() => scratch.push(b'\x0b'),
+        b'x' if read.allow_x_escapes() => {
             let c: u32 = tri!(read.decode_hex_escape(2)).into();
             let c = match char::from_u32(c) {
                 Some(c) => c,
