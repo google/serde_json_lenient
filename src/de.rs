@@ -26,6 +26,7 @@ pub struct Deserializer<R> {
     #[cfg(feature = "unbounded_depth")]
     disable_recursion_limit: bool,
     ignore_trailing_commas: bool,
+    allow_comments: bool,
 }
 
 impl<'de, R> Deserializer<R>
@@ -48,6 +49,7 @@ where
                 scratch: Vec::new(),
                 remaining_depth: 128,
                 ignore_trailing_commas: true,
+                allow_comments: true,
             }
         }
 
@@ -59,6 +61,7 @@ where
                 remaining_depth: 128,
                 disable_recursion_limit: false,
                 ignore_trailing_commas: true,
+                allow_comments: true,
             }
         }
     }
@@ -235,6 +238,11 @@ impl<'de, R: Read<'de>> Deserializer<R> {
         self.ignore_trailing_commas = ignore;
     }
 
+    /// Whether to allow comments.
+    pub fn set_allow_comments(&mut self, allow: bool) {
+        self.allow_comments = allow;
+    }
+
     fn peek(&mut self) -> Result<Option<u8>> {
         self.read.peek()
     }
@@ -278,7 +286,7 @@ impl<'de, R: Read<'de>> Deserializer<R> {
                 Some(b' ') | Some(b'\n') | Some(b'\t') | Some(b'\r') => {
                     self.eat_char();
                 }
-                Some(b'/') => {
+                Some(b'/') if self.allow_comments => {
                     self.eat_char();
                     match tri!(self.peek()) {
                         Some(b'/') => {
