@@ -44,13 +44,13 @@ impl Serialize for Value {
 ///
 /// ```
 /// use serde::Serialize;
-/// use serde_jsonrc::{Error, Value};
+/// use serde_json_lenient::{Error, Value};
 ///
 /// pub fn to_value<T>(input: T) -> Result<Value, Error>
 /// where
 ///     T: Serialize,
 /// {
-///     input.serialize(serde_jsonrc::value::Serializer)
+///     input.serialize(serde_json_lenient::value::Serializer)
 /// }
 /// ```
 pub struct Serializer;

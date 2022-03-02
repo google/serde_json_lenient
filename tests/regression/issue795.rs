@@ -1,7 +1,7 @@
 use serde::de::{
     Deserialize, Deserializer, EnumAccess, IgnoredAny, MapAccess, VariantAccess, Visitor,
 };
-use serde_jsonrc::json;
+use serde_json_lenient::json;
 use std::fmt;
 
 #[derive(Debug)]
@@ -50,8 +50,8 @@ impl<'de> Deserialize<'de> for Enum {
 #[test]
 fn test() {
     let s = r#" {"Variant":{"x":0,"y":0}} "#;
-    assert!(serde_jsonrc::from_str::<Enum>(s).is_err());
+    assert!(serde_json_lenient::from_str::<Enum>(s).is_err());
 
     let j = json!({"Variant":{"x":0,"y":0}});
-    assert!(serde_jsonrc::from_value::<Enum>(j).is_err());
+    assert!(serde_json_lenient::from_value::<Enum>(j).is_err());
 }

@@ -1,4 +1,4 @@
-use serde_jsonrc::{json, Number, Value};
+use serde_json_lenient::{json, Number, Value};
 
 #[test]
 fn number() {
@@ -45,7 +45,7 @@ fn value_object() {
 
 #[test]
 fn error() {
-    let err = serde_jsonrc::from_str::<Value>("{0}").unwrap_err();
+    let err = serde_json_lenient::from_str::<Value>("{0}").unwrap_err();
     let expected = "Error(\"key must be a string\", line: 1, column: 2)";
     assert_eq!(format!("{:?}", err), expected);
 }

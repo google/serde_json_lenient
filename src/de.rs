@@ -36,7 +36,7 @@ impl<'de, R> Deserializer<R>
 where
     R: read::Read<'de>,
 {
-    /// Create a JSON deserializer from one of the possible serde_jsonrc input
+    /// Create a JSON deserializer from one of the possible serde_json_lenient input
     /// sources.
     ///
     /// Typically it is more convenient to use one of these methods instead:
@@ -178,7 +178,7 @@ impl<'de, R: Read<'de>> Deserializer<R> {
     ///
     /// ```
     /// use serde::Deserialize;
-    /// use serde_jsonrc::Value;
+    /// use serde_json_lenient::Value;
     ///
     /// fn main() {
     ///     let mut json = String::new();
@@ -186,7 +186,7 @@ impl<'de, R: Read<'de>> Deserializer<R> {
     ///         json = format!("[{}]", json);
     ///     }
     ///
-    ///     let mut deserializer = serde_jsonrc::Deserializer::from_str(&json);
+    ///     let mut deserializer = serde_json_lenient::Deserializer::from_str(&json);
     ///     deserializer.disable_recursion_limit();
     ///     let deserializer = serde_stacker::Deserializer::new(&mut deserializer);
     ///     let value = Value::deserialize(deserializer).unwrap();
@@ -211,7 +211,7 @@ impl<'de, R: Read<'de>> Deserializer<R> {
 
     /// Whether to ignore trailing commas.
     ///
-    /// By default, serde_jsonrc ignores trailing commas in its JSON input even
+    /// By default, serde_json_lenient ignores trailing commas in its JSON input even
     /// though this is not specification-compliant. This API allows the parser
     /// to be switched to a strict mode in this respect, by passing `false` into
     /// this API.
@@ -219,7 +219,7 @@ impl<'de, R: Read<'de>> Deserializer<R> {
     /// # Example
     ///
     /// ```
-    /// use serde_jsonrc::{Deserializer, Value};
+    /// use serde_json_lenient::{Deserializer, Value};
     /// use serde::de::Deserialize;
     ///
     /// let s = r#" { "a", "b", }"#;
@@ -1634,7 +1634,7 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     ///
     /// [RFC 7159]: https://tools.ietf.org/html/rfc7159
     ///
-    /// The behavior of serde_jsonrc is specified to fail on non-UTF-8 strings
+    /// The behavior of serde_json_lenient is specified to fail on non-UTF-8 strings
     /// when deserializing into Rust UTF-8 string types such as String, and
     /// succeed with non-UTF-8 bytes when deserializing using this method.
     ///
@@ -1648,9 +1648,9 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     /// ```
     /// use serde_bytes::ByteBuf;
     ///
-    /// fn look_at_bytes() -> Result<(), serde_jsonrc::Error> {
+    /// fn look_at_bytes() -> Result<(), serde_json_lenient::Error> {
     ///     let json_data = b"\"some bytes: \xe5\x00\xe5\"";
-    ///     let bytes: ByteBuf = serde_jsonrc::from_slice(json_data)?;
+    ///     let bytes: ByteBuf = serde_json_lenient::from_slice(json_data)?;
     ///
     ///     assert_eq!(b'\xe5', bytes[12]);
     ///     assert_eq!(b'\0', bytes[13]);
@@ -1671,7 +1671,7 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     ///
     /// fn look_at_bytes() {
     ///     let json_data = b"\"invalid unicode surrogate: \\uD801\"";
-    ///     let parsed: Result<ByteBuf, _> = serde_jsonrc::from_slice(json_data);
+    ///     let parsed: Result<ByteBuf, _> = serde_json_lenient::from_slice(json_data);
     ///
     ///     assert!(parsed.is_err());
     ///
@@ -2369,7 +2369,7 @@ where
 /// arrays, objects, or strings, or be followed by whitespace or a self-delineating value.
 ///
 /// ```
-/// use serde_jsonrc::{Deserializer, Value};
+/// use serde_json_lenient::{Deserializer, Value};
 ///
 /// fn main() {
 ///     let data = "{\"k\": 3}1\"cool\"\"stuff\" 3{}  [0, 1, 2]";
@@ -2394,7 +2394,7 @@ where
     R: read::Read<'de>,
     T: de::Deserialize<'de>,
 {
-    /// Create a JSON stream deserializer from one of the possible serde_jsonrc
+    /// Create a JSON stream deserializer from one of the possible serde_json_lenient
     /// input sources.
     ///
     /// Typically it is more convenient to use one of these methods instead:
@@ -2421,7 +2421,7 @@ where
     /// ```
     /// let data = b"[0] [1] [";
     ///
-    /// let de = serde_jsonrc::Deserializer::from_slice(data);
+    /// let de = serde_json_lenient::Deserializer::from_slice(data);
     /// let mut stream = de.into_iter::<Vec<i32>>();
     /// assert_eq!(0, stream.byte_offset());
     ///
@@ -2543,10 +2543,10 @@ where
 /// Deserialize an instance of type `T` from an IO stream of JSON.
 ///
 /// The content of the IO stream is deserialized directly from the stream
-/// without being buffered in memory by serde_jsonrc.
+/// without being buffered in memory by serde_json_lenient.
 ///
 /// When reading from a source against which short reads are not efficient, such
-/// as a [`File`], you will want to apply your own buffering because serde_jsonrc
+/// as a [`File`], you will want to apply your own buffering because serde_json_lenient
 /// will not buffer the input. See [`std::io::BufReader`].
 ///
 /// It is expected that the input stream ends after the deserialized object.
@@ -2588,7 +2588,7 @@ where
 ///     let reader = BufReader::new(file);
 ///
 ///     // Read the JSON contents of the file as an instance of `User`.
-///     let u = serde_jsonrc::from_reader(reader)?;
+///     let u = serde_json_lenient::from_reader(reader)?;
 ///
 ///     // Return the `User`.
 ///     Ok(u)
@@ -2617,7 +2617,7 @@ where
 /// }
 ///
 /// fn read_user_from_stream(tcp_stream: TcpStream) -> Result<User, Box<dyn Error>> {
-///     let mut de = serde_jsonrc::Deserializer::from_reader(tcp_stream);
+///     let mut de = serde_json_lenient::Deserializer::from_reader(tcp_stream);
 ///     let u = User::deserialize(&mut de)?;
 ///
 ///     Ok(u)
@@ -2674,7 +2674,7 @@ where
 ///             \"location\": \"Menlo Park, CA\"
 ///         }";
 ///
-///     let u: User = serde_jsonrc::from_slice(j).unwrap();
+///     let u: User = serde_json_lenient::from_slice(j).unwrap();
 ///     println!("{:#?}", u);
 /// }
 /// ```
@@ -2716,7 +2716,7 @@ where
 ///             \"location\": \"Menlo Park, CA\"
 ///         }";
 ///
-///     let u: User = serde_jsonrc::from_str(j).unwrap();
+///     let u: User = serde_json_lenient::from_str(j).unwrap();
 ///     println!("{:#?}", u);
 /// }
 /// ```

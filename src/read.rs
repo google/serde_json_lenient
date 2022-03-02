@@ -19,7 +19,7 @@ use serde::de::Visitor;
 /// stable we can use actual specialization.
 ///
 /// This trait is sealed and cannot be implemented for types outside of
-/// `serde_jsonrc`.
+/// `serde_json_lenient`.
 pub trait Read<'de>: private::Sealed {
     #[doc(hidden)]
     fn next(&mut self) -> Result<Option<u8>>;

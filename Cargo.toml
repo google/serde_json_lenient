@@ -1,15 +1,16 @@
 [package]
-name = "serde_jsonrc"
-version = "0.1.2" # remember to update html_root_url
+name = "serde_json_lenient"
+version = "0.1.3" # remember to update html_root_url
 authors = [
+    "Adrian Taylor <adetaylor@chromium.org>",
     "Michael Bolin <bolinfest@gmail.com>",
     "Erick Tryzelaar <erick.tryzelaar@gmail.com>",
     "David Tolnay <dtolnay@gmail.com>",
 ]
 license = "MIT/Apache-2.0"
 description = "A lenient JSON serialization file format"
-repository = "https://github.com/serde-rs/json"
-documentation = "https://docs.serde.rs/serde_jsonrc/"
+repository = "https://github.com/google/serde_json_lenient"
+documentation = "https://docs.rs/serde_json_lenient/latest/"
 keywords = ["json", "serde", "serialization"]
 categories = ["encoding"]
 readme = "README.md"
@@ -70,7 +71,7 @@ preserve_order = ["indexmap"]
 # output identical to the input.
 float_roundtrip = []
 
-# Use an arbitrary precision number representation for serde_jsonrc::Number. This
+# Use an arbitrary precision number representation for serde_json_lenient::Number. This
 # allows JSON numbers of arbitrary size/precision to be read into a Number and
 # written back to a JSON string without loss of precision.
 #

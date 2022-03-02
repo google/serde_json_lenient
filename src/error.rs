@@ -14,7 +14,7 @@ pub struct Error {
     err: Box<ErrorImpl>,
 }
 
-/// Alias for a `Result` with the error type `serde_jsonrc::Error`.
+/// Alias for a `Result` with the error type `serde_json_lenient::Error`.
 pub type Result<T> = result::Result<T, Error>;
 
 impl Error {
@@ -103,7 +103,7 @@ impl Error {
     }
 }
 
-/// Categorizes the cause of a `serde_jsonrc::Error`.
+/// Categorizes the cause of a `serde_json_lenient::Error`.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Category {
     /// The error was caused by a failure to read or write bytes on an IO
@@ -129,7 +129,7 @@ pub enum Category {
 #[cfg(feature = "std")]
 #[allow(clippy::fallible_impl_from)]
 impl From<Error> for io::Error {
-    /// Convert a `serde_jsonrc::Error` into an `io::Error`.
+    /// Convert a `serde_json_lenient::Error` into an `io::Error`.
     ///
     /// JSON syntax and data errors are turned into `InvalidData` IO errors.
     /// EOF errors are turned into `UnexpectedEof` IO errors.
@@ -139,12 +139,12 @@ impl From<Error> for io::Error {
     ///
     /// enum MyError {
     ///     Io(io::Error),
-    ///     Json(serde_jsonrc::Error),
+    ///     Json(serde_json_lenient::Error),
     /// }
     ///
-    /// impl From<serde_jsonrc::Error> for MyError {
-    ///     fn from(err: serde_jsonrc::Error) -> MyError {
-    ///         use serde_jsonrc::error::Category;
+    /// impl From<serde_json_lenient::Error> for MyError {
+    ///     fn from(err: serde_json_lenient::Error) -> MyError {
+    ///         use serde_json_lenient::error::Category;
     ///         match err.classify() {
     ///             Category::Io => {
     ///                 MyError::Io(err.into())

@@ -1,3 +1,3 @@
 #![no_std]
 
-pub use serde_jsonrc::*;
+pub use serde_json_lenient::*;

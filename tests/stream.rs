@@ -1,6 +1,6 @@
 #![cfg(not(feature = "preserve_order"))]
 
-use serde_jsonrc::{json, Deserializer, Value};
+use serde_json_lenient::{json, Deserializer, Value};
 
 // Rustfmt issue https://github.com/rust-lang-nursery/rustfmt/issues/2740
 #[rustfmt::skip]

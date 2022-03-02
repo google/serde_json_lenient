@@ -1,10 +1,10 @@
 extern crate serde;
 
 #[macro_use]
-extern crate serde_jsonrc;
+extern crate serde_json_lenient;
 
-use serde_jsonrc::{Value, Deserializer, Error};
-use serde_jsonrc::de::SliceRead;
+use serde_json_lenient::{Value, Deserializer, Error};
+use serde_json_lenient::de::SliceRead;
 use serde::de::Deserialize;
 
 fn from_slice_with_unicode_substitution(s: &[u8]) -> Result<Value, Error> {

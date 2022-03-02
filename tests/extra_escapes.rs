@@ -1,8 +1,8 @@
 extern crate serde;
 #[macro_use]
-extern crate serde_jsonrc;
+extern crate serde_json_lenient;
 
-use serde_jsonrc::{from_str, Value};
+use serde_json_lenient::{from_str, Value};
 
 #[test]
 fn test_vertical_tab() {

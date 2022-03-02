@@ -11,8 +11,8 @@ enum E {
 #[test]
 fn test() {
     let e = E::Float(159.1);
-    let v = serde_jsonrc::to_value(e).unwrap();
-    let e = serde_jsonrc::from_value::<E>(v).unwrap();
+    let v = serde_json_lenient::to_value(e).unwrap();
+    let e = serde_json_lenient::from_value::<E>(v).unwrap();
 
     match e {
         E::Float(f) => assert_eq!(f, 159.1),
