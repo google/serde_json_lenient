@@ -205,7 +205,7 @@ impl SubstitutingStrUtfOutputStrategy {
     fn from_utf8_lossy(&self, output: &mut Vec<u8>, mut input: &[u8]) -> bool {
         let mut first = true;
         loop {
-            match std::str::from_utf8(input) {
+            match core::str::from_utf8(input) {
                 Ok(valid) => {
                     if first {
                         return false;
