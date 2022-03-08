@@ -2694,6 +2694,15 @@ where
     from_trait(read::SliceRead::new(v, false, false, false, false))
 }
 
+/// Like `from_slice`, but switches on all our quirks modes. For tests.
+/// (Isn't marked `#[cfg(test)]` because we need this in UI tests.)
+pub fn from_str_lenient<'a, T>(s: &'a str) -> Result<T>
+where
+    T: de::Deserialize<'a>,
+{
+    from_trait(read::SliceRead::new(s.as_bytes(), true, true, true, true))
+}
+
 /// Deserialize an instance of type `T` from a string of JSON text.
 ///
 /// # Example
