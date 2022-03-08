@@ -309,7 +309,7 @@
 //! [macro]: https://docs.serde.rs/serde_json_lenient/macro.json.html
 //! [`serde-json-core`]: https://github.com/rust-embedded-community/serde-json-core
 
-#![doc(html_root_url = "https://docs.rs/serde_json_lenient/0.1.3")]
+#![doc(html_root_url = "https://docs.rs/serde_json_lenient/0.1.4")]
 // Ignored clippy lints
 #![allow(
     clippy::comparison_chain,
