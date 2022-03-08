@@ -4,10 +4,10 @@ extern crate serde_derive;
 extern crate serde;
 
 #[macro_use]
-extern crate serde_jsonrc;
+extern crate serde_json_lenient;
 
 use serde::Deserialize;
-use serde_jsonrc::{from_str, Deserializer, Value};
+use serde_json_lenient::{from_str, Deserializer, Value};
 
 #[test]
 fn test_trailing_comma_object() {

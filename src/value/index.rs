@@ -2,7 +2,7 @@ use super::Value;
 use crate::lib::*;
 use crate::map::Map;
 
-/// A type that can be used to index into a `serde_jsonrc::Value`.
+/// A type that can be used to index into a `serde_json_lenient::Value`.
 ///
 /// The [`get`] and [`get_mut`] methods of `Value` accept any type that
 /// implements `Index`, as does the [square-bracket indexing operator]. This
@@ -14,12 +14,12 @@ use crate::map::Map;
 /// [square-bracket indexing operator]: ../enum.Value.html#impl-Index%3CI%3E
 ///
 /// This trait is sealed and cannot be implemented for types outside of
-/// `serde_jsonrc`.
+/// `serde_json_lenient`.
 ///
 /// # Examples
 ///
 /// ```
-/// # use serde_jsonrc::json;
+/// # use serde_json_lenient::json;
 /// #
 /// let data = json!({ "inner": [1, 2, 3] });
 ///
@@ -113,9 +113,9 @@ impl Index for String {
     }
 }
 
-impl<'a, T: ?Sized> Index for &'a T
+impl<'a, T> Index for &'a T
 where
-    T: Index,
+    T: ?Sized + Index,
 {
     fn index_into<'v>(&self, v: &'v Value) -> Option<&'v Value> {
         (**self).index_into(v)
@@ -134,7 +134,7 @@ mod private {
     impl Sealed for usize {}
     impl Sealed for str {}
     impl Sealed for super::String {}
-    impl<'a, T: ?Sized> Sealed for &'a T where T: Sealed {}
+    impl<'a, T> Sealed for &'a T where T: ?Sized + Sealed {}
 }
 
 /// Used in panic messages.
@@ -178,7 +178,7 @@ where
 {
     type Output = Value;
 
-    /// Index into a `serde_jsonrc::Value` using the syntax `value[0]` or
+    /// Index into a `serde_json_lenient::Value` using the syntax `value[0]` or
     /// `value["k"]`.
     ///
     /// Returns `Value::Null` if the type of `self` does not match the type of
@@ -192,7 +192,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let data = json!({
     ///     "x": {
@@ -216,7 +216,7 @@ impl<I> ops::IndexMut<I> for Value
 where
     I: Index,
 {
-    /// Write into a `serde_jsonrc::Value` using the syntax `value[0] = ...` or
+    /// Write into a `serde_json_lenient::Value` using the syntax `value[0] = ...` or
     /// `value["k"] = ...`.
     ///
     /// If the index is a number, the value must be an array of length bigger
@@ -231,7 +231,7 @@ where
     /// # Examples
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let mut data = json!({ "x": 0 });
     ///

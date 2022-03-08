@@ -1,11 +1,11 @@
 extern crate serde;
 
 #[macro_use]
-extern crate serde_jsonrc;
+extern crate serde_json_lenient;
 
-use serde_jsonrc::{Value, Deserializer, Error};
-use serde_jsonrc::de::SliceRead;
 use serde::de::Deserialize;
+use serde_json_lenient::de::SliceRead;
+use serde_json_lenient::{Deserializer, Error, Value};
 
 fn from_slice_with_unicode_substitution(s: &[u8]) -> Result<Value, Error> {
     let mut de = Deserializer::new(SliceRead::new(s, true, false, false, false));
@@ -29,7 +29,8 @@ fn test_invalid_utf16_escape_sequence() {
     let s = r#"
     {
         "key": "value\ud800"
-    }"#.as_bytes();
+    }"#
+    .as_bytes();
     let value: Value = from_slice_with_unicode_substitution(&s).unwrap();
     assert_eq!(value, json!({"key": "value\u{fffd}"}));
 }

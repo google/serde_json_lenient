@@ -1,4 +1,4 @@
-use serde_jsonrc::{from_str, Map, Value};
+use serde_json_lenient::{from_str, Map, Value};
 
 #[test]
 fn test_preserve_order() {

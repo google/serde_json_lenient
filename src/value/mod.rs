@@ -2,14 +2,14 @@
 //!
 //! # Constructing JSON
 //!
-//! Serde jsonrc provides a [`json!` macro][macro] to build `serde_jsonrc::Value`
+//! Serde jsonrc provides a [`json!` macro][macro] to build `serde_json_lenient::Value`
 //! objects with very natural JSON syntax.
 //!
 //! ```
-//! use serde_jsonrc::json;
+//! use serde_json_lenient::json;
 //!
 //! fn main() {
-//!     // The type of `john` is `serde_jsonrc::Value`
+//!     // The type of `john` is `serde_json_lenient::Value`
 //!     let john = json!({
 //!         "name": "John Doe",
 //!         "age": 43,
@@ -26,7 +26,7 @@
 //! }
 //! ```
 //!
-//! The `Value::to_string()` function converts a `serde_jsonrc::Value` into a
+//! The `Value::to_string()` function converts a `serde_json_lenient::Value` into a
 //! `String` of JSON text.
 //!
 //! One neat thing about the `json!` macro is that variables and expressions can
@@ -35,14 +35,14 @@
 //! be represented as JSON.
 //!
 //! ```
-//! # use serde_jsonrc::json;
+//! # use serde_json_lenient::json;
 //! #
 //! # fn random_phone() -> u16 { 0 }
 //! #
 //! let full_name = "John Doe";
 //! let age_last_year = 42;
 //!
-//! // The type of `john` is `serde_jsonrc::Value`
+//! // The type of `john` is `serde_json_lenient::Value`
 //! let john = json!({
 //!     "name": full_name,
 //!     "age": age_last_year + 1,
@@ -52,14 +52,14 @@
 //! });
 //! ```
 //!
-//! A string of JSON data can be parsed into a `serde_jsonrc::Value` by the
-//! [`serde_jsonrc::from_str`][from_str] function. There is also
+//! A string of JSON data can be parsed into a `serde_json_lenient::Value` by the
+//! [`serde_json_lenient::from_str`][from_str] function. There is also
 //! [`from_slice`][from_slice] for parsing from a byte slice `&[u8]` and
 //! [`from_reader`][from_reader] for parsing from any `io::Read` like a File or
 //! a TCP stream.
 //!
 //! ```
-//! use serde_jsonrc::{json, Value, Error};
+//! use serde_json_lenient::{json, Value, Error};
 //!
 //! fn untyped_example() -> Result<(), Error> {
 //!     // Some JSON input data as a &str. Maybe this comes from the user.
@@ -73,8 +73,8 @@
 //!             ]
 //!         }"#;
 //!
-//!     // Parse the string of data into serde_jsonrc::Value.
-//!     let v: Value = serde_jsonrc::from_str(data)?;
+//!     // Parse the string of data into serde_json_lenient::Value.
+//!     let v: Value = serde_json_lenient::from_str(data)?;
 //!
 //!     // Access parts of the data by indexing with square brackets.
 //!     println!("Please call {} at the number {}", v["name"], v["phones"][0]);
@@ -85,12 +85,11 @@
 //! # untyped_example().unwrap();
 //! ```
 //!
-//! [macro]: https://docs.serde.rs/serde_jsonrc/macro.json.html
-//! [from_str]: https://docs.serde.rs/serde_jsonrc/de/fn.from_str.html
-//! [from_slice]: https://docs.serde.rs/serde_jsonrc/de/fn.from_slice.html
-//! [from_reader]: https://docs.serde.rs/serde_jsonrc/de/fn.from_reader.html
+//! [macro]: https://docs.serde.rs/serde_json_lenient/macro.json.html
+//! [from_str]: https://docs.serde.rs/serde_json_lenient/de/fn.from_str.html
+//! [from_slice]: https://docs.serde.rs/serde_json_lenient/de/fn.from_slice.html
+//! [from_reader]: https://docs.serde.rs/serde_json_lenient/de/fn.from_reader.html
 
-use self::ser::Serializer;
 use crate::error::Error;
 use crate::io;
 use crate::lib::*;
@@ -98,21 +97,22 @@ use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 
 pub use self::index::Index;
+pub use self::ser::Serializer;
 pub use crate::map::Map;
 pub use crate::number::Number;
 
 #[cfg(feature = "raw_value")]
-pub use crate::raw::RawValue;
+pub use crate::raw::{to_raw_value, RawValue};
 
 /// Represents any valid JSON value.
 ///
-/// See the `serde_jsonrc::value` module documentation for usage examples.
-#[derive(Clone, PartialEq)]
+/// See the [`serde_json_lenient::value` module documentation](self) for usage examples.
+#[derive(Clone, Eq, PartialEq)]
 pub enum Value {
     /// Represents a JSON null value.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!(null);
     /// ```
@@ -121,7 +121,7 @@ pub enum Value {
     /// Represents a JSON boolean.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!(true);
     /// ```
@@ -130,7 +130,7 @@ pub enum Value {
     /// Represents a JSON number, whether integer or floating point.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!(12.5);
     /// ```
@@ -139,7 +139,7 @@ pub enum Value {
     /// Represents a JSON string.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!("a string");
     /// ```
@@ -148,7 +148,7 @@ pub enum Value {
     /// Represents a JSON array.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!(["an", "array"]);
     /// ```
@@ -157,13 +157,13 @@ pub enum Value {
     /// Represents a JSON object.
     ///
     /// By default the map is backed by a BTreeMap. Enable the `preserve_order`
-    /// feature of serde_jsonrc to use IndexMap instead, which preserves
+    /// feature of serde_json_lenient to use IndexMap instead, which preserves
     /// entries in the order they are inserted into the map. In particular, this
     /// allows JSON data to be deserialized into a Value and serialized to a
     /// string while retaining the order of map keys in the input.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!({ "an": "object" });
     /// ```
@@ -177,30 +177,17 @@ impl Debug for Value {
             Value::Bool(v) => formatter.debug_tuple("Bool").field(&v).finish(),
             Value::Number(ref v) => Debug::fmt(v, formatter),
             Value::String(ref v) => formatter.debug_tuple("String").field(v).finish(),
-            Value::Array(ref v) => formatter.debug_tuple("Array").field(v).finish(),
-            Value::Object(ref v) => formatter.debug_tuple("Object").field(v).finish(),
+            Value::Array(ref v) => {
+                formatter.write_str("Array(")?;
+                Debug::fmt(v, formatter)?;
+                formatter.write_str(")")
+            }
+            Value::Object(ref v) => {
+                formatter.write_str("Object(")?;
+                Debug::fmt(v, formatter)?;
+                formatter.write_str(")")
+            }
         }
-    }
-}
-
-struct WriterFormatter<'a, 'b: 'a> {
-    inner: &'a mut fmt::Formatter<'b>,
-}
-
-impl<'a, 'b> io::Write for WriterFormatter<'a, 'b> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        fn io_error<E>(_: E) -> io::Error {
-            // Error value does not matter because fmt::Display impl below just
-            // maps it to fmt::Error
-            io::Error::new(io::ErrorKind::Other, "fmt error")
-        }
-        let s = tri!(str::from_utf8(buf).map_err(io_error));
-        tri!(self.inner.write_str(s).map_err(io_error));
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
     }
 }
 
@@ -208,7 +195,7 @@ impl fmt::Display for Value {
     /// Display a JSON value as a string.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let json = json!({ "city": "London", "street": "10 Downing Street" });
     ///
@@ -230,6 +217,30 @@ impl fmt::Display for Value {
     ///     "{\n  \"city\": \"London\",\n  \"street\": \"10 Downing Street\"\n}");
     /// ```
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        struct WriterFormatter<'a, 'b: 'a> {
+            inner: &'a mut fmt::Formatter<'b>,
+        }
+
+        impl<'a, 'b> io::Write for WriterFormatter<'a, 'b> {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                // Safety: the serializer below only emits valid utf8 when using
+                // the default formatter.
+                let s = unsafe { str::from_utf8_unchecked(buf) };
+                tri!(self.inner.write_str(s).map_err(io_error));
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        fn io_error(_: fmt::Error) -> io::Error {
+            // Error value does not matter because Display impl just maps it
+            // back to fmt::Error.
+            io::Error::new(io::ErrorKind::Other, "fmt error")
+        }
+
         let alternate = f.alternate();
         let mut wr = WriterFormatter { inner: f };
         if alternate {
@@ -260,7 +271,7 @@ impl Value {
     /// or the given index is not within the bounds of the array.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let object = json!({ "A": 65, "B": 66, "C": 67 });
     /// assert_eq!(*object.get("A").unwrap(), json!(65));
@@ -276,7 +287,7 @@ impl Value {
     /// `None`.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let object = json!({
     ///     "A": ["a", "á", "à"],
@@ -302,7 +313,7 @@ impl Value {
     /// or the given index is not within the bounds of the array.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let mut object = json!({ "A": 65, "B": 66, "C": 67 });
     /// *object.get_mut("A").unwrap() = json!(69);
@@ -321,7 +332,7 @@ impl Value {
     /// object.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let obj = json!({ "a": { "nested": true }, "b": ["an", "array"] });
     ///
@@ -339,7 +350,7 @@ impl Value {
     /// otherwise.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!({ "a": { "nested": true }, "b": ["an", "array"] });
     ///
@@ -360,7 +371,7 @@ impl Value {
     /// Returns None otherwise.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let mut v = json!({ "a": { "nested": true } });
     ///
@@ -381,7 +392,7 @@ impl Value {
     /// array.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let obj = json!({ "a": ["an", "array"], "b": { "an": "object" } });
     ///
@@ -398,7 +409,7 @@ impl Value {
     /// otherwise.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!({ "a": ["an", "array"], "b": { "an": "object" } });
     ///
@@ -419,7 +430,7 @@ impl Value {
     /// Returns None otherwise.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let mut v = json!({ "a": ["an", "array"] });
     ///
@@ -439,7 +450,7 @@ impl Value {
     /// to return the string slice.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!({ "a": "some string", "b": false });
     ///
@@ -456,7 +467,7 @@ impl Value {
     /// otherwise.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!({ "a": "some string", "b": false });
     ///
@@ -485,7 +496,7 @@ impl Value {
     /// Returns true if the `Value` is a Number. Returns false otherwise.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!({ "a": 1, "b": "2" });
     ///
@@ -508,7 +519,7 @@ impl Value {
     /// return the integer value.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let big = i64::max_value() as u64 + 10;
     /// let v = json!({ "a": 64, "b": big, "c": 256.0 });
@@ -534,7 +545,7 @@ impl Value {
     /// return the integer value.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!({ "a": 64, "b": -64, "c": 256.0 });
     ///
@@ -562,7 +573,7 @@ impl Value {
     /// `is_u64` return false but this is not a guarantee in the future.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!({ "a": 256.0, "b": 64, "c": -64 });
     ///
@@ -583,7 +594,7 @@ impl Value {
     /// None otherwise.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let big = i64::max_value() as u64 + 10;
     /// let v = json!({ "a": 64, "b": big, "c": 256.0 });
@@ -603,7 +614,7 @@ impl Value {
     /// None otherwise.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!({ "a": 64, "b": -64, "c": 256.0 });
     ///
@@ -622,7 +633,7 @@ impl Value {
     /// None otherwise.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!({ "a": 256.0, "b": 64, "c": -64 });
     ///
@@ -643,7 +654,7 @@ impl Value {
     /// guaranteed to return the boolean value.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!({ "a": false, "b": "false" });
     ///
@@ -660,7 +671,7 @@ impl Value {
     /// otherwise.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!({ "a": false, "b": "false" });
     ///
@@ -682,7 +693,7 @@ impl Value {
     /// to return `Some(())`.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!({ "a": null, "b": false });
     ///
@@ -698,7 +709,7 @@ impl Value {
     /// If the `Value` is a Null, returns (). Returns None otherwise.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let v = json!({ "a": null, "b": false });
     ///
@@ -729,7 +740,7 @@ impl Value {
     /// # Examples
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let data = json!({
     ///     "x": {
@@ -741,31 +752,21 @@ impl Value {
     /// assert_eq!(data.pointer("/a/b/c"), None);
     /// ```
     pub fn pointer(&self, pointer: &str) -> Option<&Value> {
-        if pointer == "" {
+        if pointer.is_empty() {
             return Some(self);
         }
         if !pointer.starts_with('/') {
             return None;
         }
-        let tokens = pointer
+        pointer
             .split('/')
             .skip(1)
-            .map(|x| x.replace("~1", "/").replace("~0", "~"));
-        let mut target = self;
-
-        for token in tokens {
-            let target_opt = match *target {
-                Value::Object(ref map) => map.get(&token),
-                Value::Array(ref list) => parse_index(&token).and_then(|x| list.get(x)),
-                _ => return None,
-            };
-            if let Some(t) = target_opt {
-                target = t;
-            } else {
-                return None;
-            }
-        }
-        Some(target)
+            .map(|x| x.replace("~1", "/").replace("~0", "~"))
+            .try_fold(self, |target, token| match target {
+                Value::Object(map) => map.get(&token),
+                Value::Array(list) => parse_index(&token).and_then(|x| list.get(x)),
+                _ => None,
+            })
     }
 
     /// Looks up a value by a JSON Pointer and returns a mutable reference to
@@ -784,11 +785,11 @@ impl Value {
     /// # Example of Use
     ///
     /// ```
-    /// use serde_jsonrc::Value;
+    /// use serde_json_lenient::Value;
     ///
     /// fn main() {
     ///     let s = r#"{"x": 1.0, "y": 2.0}"#;
-    ///     let mut value: Value = serde_jsonrc::from_str(s).unwrap();
+    ///     let mut value: Value = serde_json_lenient::from_str(s).unwrap();
     ///
     ///     // Check value using read-only pointer
     ///     assert_eq!(value.pointer("/x"), Some(&1.0.into()));
@@ -806,42 +807,27 @@ impl Value {
     /// }
     /// ```
     pub fn pointer_mut(&mut self, pointer: &str) -> Option<&mut Value> {
-        if pointer == "" {
+        if pointer.is_empty() {
             return Some(self);
         }
         if !pointer.starts_with('/') {
             return None;
         }
-        let tokens = pointer
+        pointer
             .split('/')
             .skip(1)
-            .map(|x| x.replace("~1", "/").replace("~0", "~"));
-        let mut target = self;
-
-        for token in tokens {
-            // borrow checker gets confused about `target` being mutably borrowed too many times because of the loop
-            // this once-per-loop binding makes the scope clearer and circumvents the error
-            let target_once = target;
-            let target_opt = match *target_once {
-                Value::Object(ref mut map) => map.get_mut(&token),
-                Value::Array(ref mut list) => {
-                    parse_index(&token).and_then(move |x| list.get_mut(x))
-                }
-                _ => return None,
-            };
-            if let Some(t) = target_opt {
-                target = t;
-            } else {
-                return None;
-            }
-        }
-        Some(target)
+            .map(|x| x.replace("~1", "/").replace("~0", "~"))
+            .try_fold(self, |target, token| match target {
+                Value::Object(map) => map.get_mut(&token),
+                Value::Array(list) => parse_index(&token).and_then(move |x| list.get_mut(x)),
+                _ => None,
+            })
     }
 
     /// Takes the value out of the `Value`, leaving a `Null` in its place.
     ///
     /// ```
-    /// # use serde_jsonrc::json;
+    /// # use serde_json_lenient::json;
     /// #
     /// let mut v = json!({ "x": "y" });
     /// assert_eq!(v["x"].take(), json!("y"));
@@ -860,7 +846,7 @@ impl Value {
 ///
 /// ```
 /// # use serde::Deserialize;
-/// use serde_jsonrc::Value;
+/// use serde_json_lenient::Value;
 ///
 /// #[derive(Deserialize)]
 /// struct Settings {
@@ -869,9 +855,9 @@ impl Value {
 ///     extras: Value,
 /// }
 ///
-/// # fn try_main() -> Result<(), serde_jsonrc::Error> {
+/// # fn try_main() -> Result<(), serde_json_lenient::Error> {
 /// let data = r#" { "level": 42 } "#;
-/// let s: Settings = serde_jsonrc::from_str(data)?;
+/// let s: Settings = serde_json_lenient::from_str(data)?;
 ///
 /// assert_eq!(s.level, 42);
 /// assert_eq!(s.extras, Value::Null);
@@ -893,14 +879,14 @@ mod index;
 mod partial_eq;
 mod ser;
 
-/// Convert a `T` into `serde_jsonrc::Value` which is an enum that can represent
+/// Convert a `T` into `serde_json_lenient::Value` which is an enum that can represent
 /// any valid JSON data.
 ///
 /// # Example
 ///
 /// ```
 /// use serde::Serialize;
-/// use serde_jsonrc::json;
+/// use serde_json_lenient::json;
 ///
 /// use std::error::Error;
 ///
@@ -916,13 +902,13 @@ mod ser;
 ///         location: "Menlo Park, CA".to_owned(),
 ///     };
 ///
-///     // The type of `expected` is `serde_jsonrc::Value`
+///     // The type of `expected` is `serde_json_lenient::Value`
 ///     let expected = json!({
 ///         "fingerprint": "0xF9BA143B95FF6D82",
 ///         "location": "Menlo Park, CA",
 ///     });
 ///
-///     let v = serde_jsonrc::to_value(u).unwrap();
+///     let v = serde_json_lenient::to_value(u).unwrap();
 ///     assert_eq!(v, expected);
 ///
 ///     Ok(())
@@ -944,7 +930,7 @@ mod ser;
 ///     let mut map = BTreeMap::new();
 ///     map.insert(vec![32, 64], "x86");
 ///
-///     println!("{}", serde_jsonrc::to_value(map).unwrap_err());
+///     println!("{}", serde_json_lenient::to_value(map).unwrap_err());
 /// }
 /// ```
 // Taking by value is more friendly to iterator adapters, option and result
@@ -956,13 +942,13 @@ where
     value.serialize(Serializer)
 }
 
-/// Interpret a `serde_jsonrc::Value` as an instance of type `T`.
+/// Interpret a `serde_json_lenient::Value` as an instance of type `T`.
 ///
 /// # Example
 ///
 /// ```
 /// use serde::Deserialize;
-/// use serde_jsonrc::json;
+/// use serde_json_lenient::json;
 ///
 /// #[derive(Deserialize, Debug)]
 /// struct User {
@@ -971,13 +957,13 @@ where
 /// }
 ///
 /// fn main() {
-///     // The type of `j` is `serde_jsonrc::Value`
+///     // The type of `j` is `serde_json_lenient::Value`
 ///     let j = json!({
 ///         "fingerprint": "0xF9BA143B95FF6D82",
 ///         "location": "Menlo Park, CA"
 ///     });
 ///
-///     let u: User = serde_jsonrc::from_value(j).unwrap();
+///     let u: User = serde_json_lenient::from_value(j).unwrap();
 ///     println!("{:#?}", u);
 /// }
 /// ```

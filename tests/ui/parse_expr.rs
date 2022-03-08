@@ -1,4 +1,4 @@
-use serde_jsonrc::json;
+use serde_json_lenient::json;
 
 fn main() {
     json!({ "a" : ~ });

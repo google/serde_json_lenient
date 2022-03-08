@@ -1,6 +1,6 @@
 #![cfg(not(feature = "preserve_order"))]
 
-use serde_jsonrc::{json, Deserializer, Value};
+use serde_json_lenient::{json, Deserializer, Value};
 
 // Rustfmt issue https://github.com/rust-lang-nursery/rustfmt/issues/2740
 #[rustfmt::skip]
@@ -167,5 +167,16 @@ fn test_json_stream_invalid_number() {
     test_stream!(data, Value, |stream| {
         let second = stream.next().unwrap().unwrap_err();
         assert_eq!(second.to_string(), "trailing characters at line 1 column 2");
+    });
+}
+
+#[test]
+fn test_error() {
+    let data = "true wrong false";
+
+    test_stream!(data, Value, |stream| {
+        assert_eq!(stream.next().unwrap().unwrap(), true);
+        assert!(stream.next().unwrap().is_err());
+        assert!(stream.next().is_none());
     });
 }

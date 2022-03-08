@@ -1,7 +1,7 @@
-/// Construct a `serde_jsonrc::Value` from a JSON literal.
+/// Construct a `serde_json_lenient::Value` from a JSON literal.
 ///
 /// ```
-/// # use serde_jsonrc::json;
+/// # use serde_json_lenient::json;
 /// #
 /// let value = json!({
 ///     "code": 200,
@@ -23,7 +23,7 @@
 /// map with non-string keys, the `json!` macro will panic.
 ///
 /// ```
-/// # use serde_jsonrc::json;
+/// # use serde_json_lenient::json;
 /// #
 /// let code = 200;
 /// let features = vec!["serde", "json"];
@@ -40,7 +40,7 @@
 /// Trailing commas are allowed inside both arrays and objects.
 ///
 /// ```
-/// # use serde_jsonrc::json;
+/// # use serde_json_lenient::json;
 /// #
 /// let value = json!([
 ///     "notice",
@@ -224,6 +224,11 @@ macro_rules! json_internal {
         json_internal!(@object $object ($key) (: $($rest)*) (: $($rest)*));
     };
 
+    // Refuse to absorb colon token into key expression.
+    (@object $object:ident ($($key:tt)*) (: $($unexpected:tt)+) $copy:tt) => {
+        json_expect_expr_comma!($($unexpected)+);
+    };
+
     // Munch a token into the current key.
     (@object $object:ident ($($key:tt)*) ($tt:tt $($rest:tt)*) $copy:tt) => {
         json_internal!(@object $object ($($key)* $tt) ($($rest)*) ($($rest)*));
@@ -289,4 +294,10 @@ macro_rules! json_internal_vec {
 #[doc(hidden)]
 macro_rules! json_unexpected {
     () => {};
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! json_expect_expr_comma {
+    ($e:expr , $($tt:tt)*) => {};
 }

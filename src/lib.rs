@@ -47,10 +47,10 @@
 //! # Operating on untyped JSON values
 //!
 //! Any valid JSON data can be manipulated in the following recursive enum
-//! representation. This data structure is [`serde_jsonrc::Value`][value].
+//! representation. This data structure is [`serde_json_lenient::Value`][value].
 //!
 //! ```
-//! # use serde_jsonrc::{Number, Map};
+//! # use serde_json_lenient::{Number, Map};
 //! #
 //! # #[allow(dead_code)]
 //! enum Value {
@@ -63,14 +63,14 @@
 //! }
 //! ```
 //!
-//! A string of JSON data can be parsed into a `serde_jsonrc::Value` by the
-//! [`serde_jsonrc::from_str`][from_str] function. There is also
+//! A string of JSON data can be parsed into a `serde_json_lenient::Value` by the
+//! [`serde_json_lenient::from_str`][from_str] function. There is also
 //! [`from_slice`][from_slice] for parsing from a byte slice &[u8] and
 //! [`from_reader`][from_reader] for parsing from any `io::Read` like a File or
 //! a TCP stream.
 //!
 //! ```
-//! use serde_jsonrc::{Result, Value};
+//! use serde_json_lenient::{Result, Value};
 //!
 //! fn untyped_example() -> Result<()> {
 //!     // Some JSON input data as a &str. Maybe this comes from the user.
@@ -84,8 +84,8 @@
 //!             ]
 //!         }"#;
 //!
-//!     // Parse the string of data into serde_jsonrc::Value.
-//!     let v: Value = serde_jsonrc::from_str(data)?;
+//!     // Parse the string of data into serde_json_lenient::Value.
+//!     let v: Value = serde_json_lenient::from_str(data)?;
 //!
 //!     // Access parts of the data by indexing with square brackets.
 //!     println!("Please call {} at the number {}", v["name"], v["phones"][0]);
@@ -113,7 +113,7 @@
 //! a JSON string to a Rust string with [`as_str()`] or avoiding the use of
 //! `Value` as described in the following section.
 //!
-//! [`as_str()`]: https://docs.serde.rs/serde_jsonrc/enum.Value.html#method.as_str
+//! [`as_str()`]: https://docs.serde.rs/serde_json_lenient/enum.Value.html#method.as_str
 //!
 //! The `Value` representation is sufficient for very basic tasks but can be
 //! tedious to work with for anything more significant. Error handling is
@@ -129,7 +129,7 @@
 //!
 //! ```
 //! use serde::{Deserialize, Serialize};
-//! use serde_jsonrc::Result;
+//! use serde_json_lenient::Result;
 //!
 //! #[derive(Serialize, Deserialize)]
 //! struct Person {
@@ -151,9 +151,9 @@
 //!         }"#;
 //!
 //!     // Parse the string of data into a Person object. This is exactly the
-//!     // same function as the one that produced serde_jsonrc::Value above, but
+//!     // same function as the one that produced serde_json_lenient::Value above, but
 //!     // now we are asking it for a Person as output.
-//!     let p: Person = serde_jsonrc::from_str(data)?;
+//!     let p: Person = serde_json_lenient::from_str(data)?;
 //!
 //!     // Do things just like with any other Rust data structure.
 //!     println!("Please call {} at the number {}", p.name, p.phones[0]);
@@ -166,7 +166,7 @@
 //! # }
 //! ```
 //!
-//! This is the same `serde_jsonrc::from_str` function as before, but this time we
+//! This is the same `serde_json_lenient::from_str` function as before, but this time we
 //! assign the return value to a variable of type `Person` so Serde will
 //! automatically interpret the input data as a `Person` and produce informative
 //! error messages if the layout does not conform to what a `Person` is expected
@@ -180,20 +180,20 @@
 //! Once we have `p` of type `Person`, our IDE and the Rust compiler can help us
 //! use it correctly like they do for any other Rust code. The IDE can
 //! autocomplete field names to prevent typos, which was impossible in the
-//! `serde_jsonrc::Value` representation. And the Rust compiler can check that
+//! `serde_json_lenient::Value` representation. And the Rust compiler can check that
 //! when we write `p.phones[0]`, then `p.phones` is guaranteed to be a
 //! `Vec<String>` so indexing into it makes sense and produces a `String`.
 //!
 //! # Constructing JSON values
 //!
-//! Serde jsonrc provides a [`json!` macro][macro] to build `serde_jsonrc::Value`
+//! Serde jsonrc provides a [`json!` macro][macro] to build `serde_json_lenient::Value`
 //! objects with very natural JSON syntax.
 //!
 //! ```
-//! use serde_jsonrc::json;
+//! use serde_json_lenient::json;
 //!
 //! fn main() {
-//!     // The type of `john` is `serde_jsonrc::Value`
+//!     // The type of `john` is `serde_json_lenient::Value`
 //!     let john = json!({
 //!         "name": "John Doe",
 //!         "age": 43,
@@ -210,7 +210,7 @@
 //! }
 //! ```
 //!
-//! The `Value::to_string()` function converts a `serde_jsonrc::Value` into a
+//! The `Value::to_string()` function converts a `serde_json_lenient::Value` into a
 //! `String` of JSON text.
 //!
 //! One neat thing about the `json!` macro is that variables and expressions can
@@ -219,14 +219,14 @@
 //! be represented as JSON.
 //!
 //! ```
-//! # use serde_jsonrc::json;
+//! # use serde_json_lenient::json;
 //! #
 //! # fn random_phone() -> u16 { 0 }
 //! #
 //! let full_name = "John Doe";
 //! let age_last_year = 42;
 //!
-//! // The type of `john` is `serde_jsonrc::Value`
+//! // The type of `john` is `serde_json_lenient::Value`
 //! let john = json!({
 //!     "name": full_name,
 //!     "age": age_last_year + 1,
@@ -244,14 +244,14 @@
 //! # Creating JSON by serializing data structures
 //!
 //! A data structure can be converted to a JSON string by
-//! [`serde_jsonrc::to_string`][to_string]. There is also
-//! [`serde_jsonrc::to_vec`][to_vec] which serializes to a `Vec<u8>` and
-//! [`serde_jsonrc::to_writer`][to_writer] which serializes to any `io::Write`
+//! [`serde_json_lenient::to_string`][to_string]. There is also
+//! [`serde_json_lenient::to_vec`][to_vec] which serializes to a `Vec<u8>` and
+//! [`serde_json_lenient::to_writer`][to_writer] which serializes to any `io::Write`
 //! such as a File or a TCP stream.
 //!
 //! ```
 //! use serde::{Deserialize, Serialize};
-//! use serde_jsonrc::Result;
+//! use serde_json_lenient::Result;
 //!
 //! #[derive(Serialize, Deserialize)]
 //! struct Address {
@@ -267,7 +267,7 @@
 //!     };
 //!
 //!     // Serialize it to a JSON string.
-//!     let j = serde_jsonrc::to_string(&address)?;
+//!     let j = serde_json_lenient::to_string(&address)?;
 //!
 //!     // Print, write to a file, or send to an HTTP server.
 //!     println!("{}", j);
@@ -293,58 +293,79 @@
 //!
 //! ```toml
 //! [dependencies]
-//! serde_jsonrc = { version = "1.0", default-features = false, features = ["alloc"] }
+//! serde_json_lenient = { version = "1.0", default-features = false, features = ["alloc"] }
 //! ```
 //!
 //! For JSON support in Serde without a memory allocator, please see the
 //! [`serde-json-core`] crate.
 //!
-//! [value]: https://docs.serde.rs/serde_jsonrc/value/enum.Value.html
-//! [from_str]: https://docs.serde.rs/serde_jsonrc/de/fn.from_str.html
-//! [from_slice]: https://docs.serde.rs/serde_jsonrc/de/fn.from_slice.html
-//! [from_reader]: https://docs.serde.rs/serde_jsonrc/de/fn.from_reader.html
-//! [to_string]: https://docs.serde.rs/serde_jsonrc/ser/fn.to_string.html
-//! [to_vec]: https://docs.serde.rs/serde_jsonrc/ser/fn.to_vec.html
-//! [to_writer]: https://docs.serde.rs/serde_jsonrc/ser/fn.to_writer.html
-//! [macro]: https://docs.serde.rs/serde_jsonrc/macro.json.html
-//! [`serde-json-core`]: https://japaric.github.io/serde-json-core/serde_jsonrc_core/
+//! [value]: https://docs.serde.rs/serde_json_lenient/value/enum.Value.html
+//! [from_str]: https://docs.serde.rs/serde_json_lenient/de/fn.from_str.html
+//! [from_slice]: https://docs.serde.rs/serde_json_lenient/de/fn.from_slice.html
+//! [from_reader]: https://docs.serde.rs/serde_json_lenient/de/fn.from_reader.html
+//! [to_string]: https://docs.serde.rs/serde_json_lenient/ser/fn.to_string.html
+//! [to_vec]: https://docs.serde.rs/serde_json_lenient/ser/fn.to_vec.html
+//! [to_writer]: https://docs.serde.rs/serde_json_lenient/ser/fn.to_writer.html
+//! [macro]: https://docs.serde.rs/serde_json_lenient/macro.json.html
+//! [`serde-json-core`]: https://github.com/rust-embedded-community/serde-json-core
 
-#![doc(html_root_url = "https://docs.rs/serde_jsonrc/0.1.2")]
-#![deny(clippy::all, clippy::pedantic)]
+#![doc(html_root_url = "https://docs.rs/serde_json_lenient/0.1.3")]
 // Ignored clippy lints
 #![allow(
+    clippy::comparison_chain,
     clippy::deprecated_cfg_attr,
     clippy::doc_markdown,
+    clippy::excessive_precision,
+    clippy::float_cmp,
+    clippy::manual_range_contains,
+    clippy::match_like_matches_macro,
+    clippy::match_single_binding,
     clippy::needless_doctest_main,
-    clippy::transmute_ptr_to_ptr
+    clippy::transmute_ptr_to_ptr,
+    clippy::unnecessary_wraps,
+    // clippy bug: https://github.com/rust-lang/rust-clippy/issues/5704
+    clippy::unnested_or_patterns,
 )]
 // Ignored clippy_pedantic lints
 #![allow(
     // Deserializer::from_str, into_iter
     clippy::should_implement_trait,
     // integer and float ser/de requires these sorts of casts
+    clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
     // correctly used
+    clippy::enum_glob_use,
+    clippy::if_not_else,
     clippy::integer_division,
+    clippy::map_err_ignore,
+    clippy::match_same_arms,
+    clippy::similar_names,
+    clippy::unused_self,
+    clippy::wildcard_imports,
     // things are often more readable this way
     clippy::cast_lossless,
     clippy::module_name_repetitions,
+    clippy::redundant_else,
     clippy::shadow_unrelated,
     clippy::single_match_else,
     clippy::too_many_lines,
+    clippy::unreadable_literal,
+    clippy::unseparated_literal_suffix,
     clippy::use_self,
     clippy::zero_prefixed_literal,
     // we support older compilers
     clippy::checked_conversions,
-    clippy::redundant_field_names,
+    clippy::mem_replace_with_default,
     // noisy
     clippy::missing_errors_doc,
     clippy::must_use_candidate,
 )]
+#![allow(non_upper_case_globals)]
 #![deny(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -367,8 +388,10 @@ mod lib {
     pub use self::core::convert::{self, From, Into};
     pub use self::core::default::{self, Default};
     pub use self::core::fmt::{self, Debug, Display};
-    pub use self::core::hash::{self, Hash};
+    pub use self::core::hash::{self, Hash, Hasher};
+    pub use self::core::iter::FusedIterator;
     pub use self::core::marker::{self, PhantomData};
+    pub use self::core::ops::{Bound, RangeBounds};
     pub use self::core::result::{self, Result};
     pub use self::core::{borrow, char, cmp, iter, mem, num, ops, slice, str};
 
@@ -427,6 +450,9 @@ macro_rules! tri {
             crate::lib::Result::Err(err) => return crate::lib::Result::Err(err),
         }
     };
+    ($e:expr,) => {
+        tri!($e)
+    };
 }
 
 #[macro_use]
@@ -436,6 +462,7 @@ pub mod de;
 pub mod error;
 pub mod map;
 #[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 pub mod ser;
 #[cfg(not(feature = "std"))]
 mod ser;
@@ -446,6 +473,8 @@ mod features_check;
 mod io;
 #[cfg(feature = "std")]
 mod iter;
+#[cfg(feature = "float_roundtrip")]
+mod lexical;
 mod number;
 mod read;
 

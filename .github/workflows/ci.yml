@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule: [cron: "40 1 * * *"]
+
+jobs:
+  test:
+    name: Rust nightly ${{matrix.os == 'windows' && '(windows)' || ''}}
+    runs-on: ${{matrix.os}}-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu, windows]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo test
+      - run: cargo test --features preserve_order --tests -- --skip ui --exact
+      - run: cargo test --features float_roundtrip --tests -- --skip ui --exact
+      - run: cargo test --features arbitrary_precision --tests -- --skip ui --exact
+      - run: cargo test --features float_roundtrip,arbitrary_precision --tests -- --skip ui --exact
+      - run: cargo test --features raw_value --tests -- --skip ui --exact
+      - run: cargo test --features unbounded_depth --tests -- --skip ui --exact
+
+  build:
+    name: Rust ${{matrix.rust}} ${{matrix.os == 'windows' && '(windows)' || ''}}
+    runs-on: ${{matrix.os}}-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [beta, stable]
+        os: [ubuntu]
+        include:
+          - rust: stable
+            os: windows
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{matrix.rust}}
+      - run: cargo check
+      - run: cargo check --features preserve_order
+      - run: cargo check --manifest-path tests/crate/Cargo.toml --no-default-features --features alloc,preserve_order
+      - run: cargo check --features float_roundtrip
+      - run: cargo check --features arbitrary_precision
+      - run: cargo check --features raw_value
+      - run: cargo check --features unbounded_depth
+      - name: Build without std
+        run: |
+          rustup target add aarch64-unknown-none
+          cargo check \
+              --manifest-path tests/crate/Cargo.toml \
+              --target aarch64-unknown-none \
+              --no-default-features \
+              --features alloc
+        if: matrix.rust == 'stable' && matrix.os == 'ubuntu'
+
+  nostd:
+    name: Rust 1.36.0
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@1.36.0
+      - run: cargo check --manifest-path tests/crate/Cargo.toml --no-default-features --features alloc
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@clippy
+      - run: cargo clippy --tests -- -Dclippy::all -Dclippy::pedantic
+      - run: cargo clippy --all-features --tests -- -Dclippy::all -Dclippy::pedantic
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo doc --features raw_value,unbounded_depth
+        env:
+          RUSTDOCFLAGS: --cfg docsrs
+
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-fuzz --debug
+      - run: cargo fuzz build -O

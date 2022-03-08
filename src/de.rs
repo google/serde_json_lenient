@@ -1,10 +1,12 @@
 //! Deserialize JSON data to a Rust data structure.
 
 use crate::error::{Error, ErrorCode, Result};
+#[cfg(feature = "float_roundtrip")]
+use crate::lexical;
 use crate::lib::str::FromStr;
 use crate::lib::*;
 use crate::number::Number;
-use crate::read::{self, Reference};
+use crate::read::{self, Fused, Reference};
 use serde::de::{self, Expected, Unexpected};
 use serde::{forward_to_deserialize_any, serde_if_integer128};
 
@@ -23,6 +25,8 @@ pub struct Deserializer<R> {
     read: R,
     scratch: Vec<u8>,
     remaining_depth: u8,
+    #[cfg(feature = "float_roundtrip")]
+    single_precision: bool,
     #[cfg(feature = "unbounded_depth")]
     disable_recursion_limit: bool,
     ignore_trailing_commas: bool,
@@ -33,36 +37,25 @@ impl<'de, R> Deserializer<R>
 where
     R: read::Read<'de>,
 {
-    /// Create a JSON deserializer from one of the possible serde_jsonrc input
+    /// Create a JSON deserializer from one of the possible serde_json_lenient input
     /// sources.
     ///
     /// Typically it is more convenient to use one of these methods instead:
     ///
     ///   - Deserializer::from_str
-    ///   - Deserializer::from_bytes
+    ///   - Deserializer::from_slice
     ///   - Deserializer::from_reader
     pub fn new(read: R) -> Self {
-        #[cfg(not(feature = "unbounded_depth"))]
-        {
-            Deserializer {
-                read: read,
-                scratch: Vec::new(),
-                remaining_depth: 128,
-                ignore_trailing_commas: true,
-                allow_comments: true,
-            }
-        }
-
-        #[cfg(feature = "unbounded_depth")]
-        {
-            Deserializer {
-                read: read,
-                scratch: Vec::new(),
-                remaining_depth: 128,
-                disable_recursion_limit: false,
-                ignore_trailing_commas: true,
-                allow_comments: true,
-            }
+        Deserializer {
+            read,
+            scratch: Vec::new(),
+            remaining_depth: 128,
+            #[cfg(feature = "float_roundtrip")]
+            single_precision: false,
+            #[cfg(feature = "unbounded_depth")]
+            disable_recursion_limit: false,
+            ignore_trailing_commas: true,
+            allow_comments: true,
         }
     }
 }
@@ -162,7 +155,8 @@ impl<'de, R: Read<'de>> Deserializer<R> {
         let offset = self.read.byte_offset();
         StreamDeserializer {
             de: self,
-            offset: offset,
+            offset,
+            failed: false,
             output: PhantomData,
             lifetime: PhantomData,
         }
@@ -186,7 +180,7 @@ impl<'de, R: Read<'de>> Deserializer<R> {
     ///
     /// ```
     /// use serde::Deserialize;
-    /// use serde_jsonrc::Value;
+    /// use serde_json_lenient::Value;
     ///
     /// fn main() {
     ///     let mut json = String::new();
@@ -194,7 +188,7 @@ impl<'de, R: Read<'de>> Deserializer<R> {
     ///         json = format!("[{}]", json);
     ///     }
     ///
-    ///     let mut deserializer = serde_jsonrc::Deserializer::from_str(&json);
+    ///     let mut deserializer = serde_json_lenient::Deserializer::from_str(&json);
     ///     deserializer.disable_recursion_limit();
     ///     let deserializer = serde_stacker::Deserializer::new(&mut deserializer);
     ///     let value = Value::deserialize(deserializer).unwrap();
@@ -212,13 +206,14 @@ impl<'de, R: Read<'de>> Deserializer<R> {
     /// }
     /// ```
     #[cfg(feature = "unbounded_depth")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "unbounded_depth")))]
     pub fn disable_recursion_limit(&mut self) {
         self.disable_recursion_limit = true;
     }
 
     /// Whether to ignore trailing commas.
     ///
-    /// By default, serde_jsonrc ignores trailing commas in its JSON input even
+    /// By default, serde_json_lenient ignores trailing commas in its JSON input even
     /// though this is not specification-compliant. This API allows the parser
     /// to be switched to a strict mode in this respect, by passing `false` into
     /// this API.
@@ -226,7 +221,7 @@ impl<'de, R: Read<'de>> Deserializer<R> {
     /// # Example
     ///
     /// ```
-    /// use serde_jsonrc::{Deserializer, Value};
+    /// use serde_json_lenient::{Deserializer, Value};
     /// use serde::de::Deserialize;
     ///
     /// let s = r#" { "a", "b", }"#;
@@ -396,7 +391,7 @@ impl<'de, R: Read<'de>> Deserializer<R> {
         self.fix_position(err)
     }
 
-    fn deserialize_prim_number<V>(&mut self, visitor: V) -> Result<V::Value>
+    fn deserialize_number<V>(&mut self, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
@@ -489,61 +484,33 @@ impl<'de, R: Read<'de>> Deserializer<R> {
                 }
             }
             c @ b'1'..=b'9' => {
-                let mut res = (c - b'0') as u64;
+                let mut significand = (c - b'0') as u64;
 
                 loop {
                     match tri!(self.peek_or_null()) {
                         c @ b'0'..=b'9' => {
-                            self.eat_char();
                             let digit = (c - b'0') as u64;
 
-                            // We need to be careful with overflow. If we can, try to keep the
-                            // number as a `u64` until we grow too large. At that point, switch to
-                            // parsing the value as a `f64`.
-                            if overflow!(res * 10 + digit, u64::max_value()) {
-                                return Ok(ParserNumber::F64(tri!(self.parse_long_integer(
-                                    positive,
-                                    res,
-                                    1, // res * 10^1
-                                ))));
+                            // We need to be careful with overflow. If we can,
+                            // try to keep the number as a `u64` until we grow
+                            // too large. At that point, switch to parsing the
+                            // value as a `f64`.
+                            if overflow!(significand * 10 + digit, u64::max_value()) {
+                                return Ok(ParserNumber::F64(tri!(
+                                    self.parse_long_integer(positive, significand),
+                                )));
                             }
 
-                            res = res * 10 + digit;
+                            self.eat_char();
+                            significand = significand * 10 + digit;
                         }
                         _ => {
-                            return self.parse_number(positive, res);
+                            return self.parse_number(positive, significand);
                         }
                     }
                 }
             }
             _ => Err(self.error(ErrorCode::InvalidNumber)),
-        }
-    }
-
-    fn parse_long_integer(
-        &mut self,
-        positive: bool,
-        significand: u64,
-        mut exponent: i32,
-    ) -> Result<f64> {
-        loop {
-            match tri!(self.peek_or_null()) {
-                b'0'..=b'9' => {
-                    self.eat_char();
-                    // This could overflow... if your integer is gigabytes long.
-                    // Ignore that possibility.
-                    exponent += 1;
-                }
-                b'.' => {
-                    return self.parse_decimal(positive, significand, exponent);
-                }
-                b'e' | b'E' => {
-                    return self.parse_exponent(positive, significand, exponent);
-                }
-                _ => {
-                    return self.f64_from_parts(positive, significand, exponent);
-                }
-            }
         }
     }
 
@@ -557,8 +524,8 @@ impl<'de, R: Read<'de>> Deserializer<R> {
                 } else {
                     let neg = (significand as i64).wrapping_neg();
 
-                    // Convert into a float if we underflow.
-                    if neg > 0 {
+                    // Convert into a float if we underflow, or on `-0`.
+                    if neg >= 0 {
                         ParserNumber::F64(-(significand as f64))
                     } else {
                         ParserNumber::I64(neg)
@@ -576,26 +543,20 @@ impl<'de, R: Read<'de>> Deserializer<R> {
     ) -> Result<f64> {
         self.eat_char();
 
-        let mut at_least_one_digit = false;
         while let c @ b'0'..=b'9' = tri!(self.peek_or_null()) {
-            self.eat_char();
             let digit = (c - b'0') as u64;
-            at_least_one_digit = true;
 
             if overflow!(significand * 10 + digit, u64::max_value()) {
-                // The next multiply/add would overflow, so just ignore all
-                // further digits.
-                while let b'0'..=b'9' = tri!(self.peek_or_null()) {
-                    self.eat_char();
-                }
-                break;
+                return self.parse_decimal_overflow(positive, significand, exponent);
             }
 
+            self.eat_char();
             significand = significand * 10 + digit;
             exponent -= 1;
         }
 
-        if !at_least_one_digit {
+        // Error if there is not at least one digit after the decimal point.
+        if exponent == 0 {
             match tri!(self.peek()) {
                 Some(_) => return Err(self.peek_error(ErrorCode::InvalidNumber)),
                 None => return Err(self.peek_error(ErrorCode::EofWhileParsingValue)),
@@ -648,7 +609,8 @@ impl<'de, R: Read<'de>> Deserializer<R> {
             let digit = (c - b'0') as i32;
 
             if overflow!(exp * 10 + digit, i32::max_value()) {
-                return self.parse_exponent_overflow(positive, significand, positive_exp);
+                let zero_significand = significand == 0;
+                return self.parse_exponent_overflow(positive, zero_significand, positive_exp);
             }
 
             exp = exp * 10 + digit;
@@ -663,6 +625,238 @@ impl<'de, R: Read<'de>> Deserializer<R> {
         self.f64_from_parts(positive, significand, final_exp)
     }
 
+    #[cfg(feature = "float_roundtrip")]
+    fn f64_from_parts(&mut self, positive: bool, significand: u64, exponent: i32) -> Result<f64> {
+        let f = if self.single_precision {
+            lexical::parse_concise_float::<f32>(significand, exponent) as f64
+        } else {
+            lexical::parse_concise_float::<f64>(significand, exponent)
+        };
+
+        if f.is_infinite() {
+            Err(self.error(ErrorCode::NumberOutOfRange))
+        } else {
+            Ok(if positive { f } else { -f })
+        }
+    }
+
+    #[cfg(not(feature = "float_roundtrip"))]
+    fn f64_from_parts(
+        &mut self,
+        positive: bool,
+        significand: u64,
+        mut exponent: i32,
+    ) -> Result<f64> {
+        let mut f = significand as f64;
+        loop {
+            match POW10.get(exponent.wrapping_abs() as usize) {
+                Some(&pow) => {
+                    if exponent >= 0 {
+                        f *= pow;
+                        if f.is_infinite() {
+                            return Err(self.error(ErrorCode::NumberOutOfRange));
+                        }
+                    } else {
+                        f /= pow;
+                    }
+                    break;
+                }
+                None => {
+                    if f == 0.0 {
+                        break;
+                    }
+                    if exponent >= 0 {
+                        return Err(self.error(ErrorCode::NumberOutOfRange));
+                    }
+                    f /= 1e308;
+                    exponent += 308;
+                }
+            }
+        }
+        Ok(if positive { f } else { -f })
+    }
+
+    #[cfg(feature = "float_roundtrip")]
+    #[cold]
+    #[inline(never)]
+    fn parse_long_integer(&mut self, positive: bool, partial_significand: u64) -> Result<f64> {
+        // To deserialize floats we'll first push the integer and fraction
+        // parts, both as byte strings, into the scratch buffer and then feed
+        // both slices to lexical's parser. For example if the input is
+        // `12.34e5` we'll push b"1234" into scratch and then pass b"12" and
+        // b"34" to lexical. `integer_end` will be used to track where to split
+        // the scratch buffer.
+        //
+        // Note that lexical expects the integer part to contain *no* leading
+        // zeroes and the fraction part to contain *no* trailing zeroes. The
+        // first requirement is already handled by the integer parsing logic.
+        // The second requirement will be enforced just before passing the
+        // slices to lexical in f64_long_from_parts.
+        self.scratch.clear();
+        self.scratch
+            .extend_from_slice(itoa::Buffer::new().format(partial_significand).as_bytes());
+
+        loop {
+            match tri!(self.peek_or_null()) {
+                c @ b'0'..=b'9' => {
+                    self.scratch.push(c);
+                    self.eat_char();
+                }
+                b'.' => {
+                    self.eat_char();
+                    return self.parse_long_decimal(positive, self.scratch.len());
+                }
+                b'e' | b'E' => {
+                    return self.parse_long_exponent(positive, self.scratch.len());
+                }
+                _ => {
+                    return self.f64_long_from_parts(positive, self.scratch.len(), 0);
+                }
+            }
+        }
+    }
+
+    #[cfg(not(feature = "float_roundtrip"))]
+    #[cold]
+    #[inline(never)]
+    fn parse_long_integer(&mut self, positive: bool, significand: u64) -> Result<f64> {
+        let mut exponent = 0;
+        loop {
+            match tri!(self.peek_or_null()) {
+                b'0'..=b'9' => {
+                    self.eat_char();
+                    // This could overflow... if your integer is gigabytes long.
+                    // Ignore that possibility.
+                    exponent += 1;
+                }
+                b'.' => {
+                    return self.parse_decimal(positive, significand, exponent);
+                }
+                b'e' | b'E' => {
+                    return self.parse_exponent(positive, significand, exponent);
+                }
+                _ => {
+                    return self.f64_from_parts(positive, significand, exponent);
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "float_roundtrip")]
+    #[cold]
+    fn parse_long_decimal(&mut self, positive: bool, integer_end: usize) -> Result<f64> {
+        let mut at_least_one_digit = integer_end < self.scratch.len();
+        while let c @ b'0'..=b'9' = tri!(self.peek_or_null()) {
+            self.scratch.push(c);
+            self.eat_char();
+            at_least_one_digit = true;
+        }
+
+        if !at_least_one_digit {
+            match tri!(self.peek()) {
+                Some(_) => return Err(self.peek_error(ErrorCode::InvalidNumber)),
+                None => return Err(self.peek_error(ErrorCode::EofWhileParsingValue)),
+            }
+        }
+
+        match tri!(self.peek_or_null()) {
+            b'e' | b'E' => self.parse_long_exponent(positive, integer_end),
+            _ => self.f64_long_from_parts(positive, integer_end, 0),
+        }
+    }
+
+    #[cfg(feature = "float_roundtrip")]
+    fn parse_long_exponent(&mut self, positive: bool, integer_end: usize) -> Result<f64> {
+        self.eat_char();
+
+        let positive_exp = match tri!(self.peek_or_null()) {
+            b'+' => {
+                self.eat_char();
+                true
+            }
+            b'-' => {
+                self.eat_char();
+                false
+            }
+            _ => true,
+        };
+
+        let next = match tri!(self.next_char()) {
+            Some(b) => b,
+            None => {
+                return Err(self.error(ErrorCode::EofWhileParsingValue));
+            }
+        };
+
+        // Make sure a digit follows the exponent place.
+        let mut exp = match next {
+            c @ b'0'..=b'9' => (c - b'0') as i32,
+            _ => {
+                return Err(self.error(ErrorCode::InvalidNumber));
+            }
+        };
+
+        while let c @ b'0'..=b'9' = tri!(self.peek_or_null()) {
+            self.eat_char();
+            let digit = (c - b'0') as i32;
+
+            if overflow!(exp * 10 + digit, i32::max_value()) {
+                let zero_significand = self.scratch.iter().all(|&digit| digit == b'0');
+                return self.parse_exponent_overflow(positive, zero_significand, positive_exp);
+            }
+
+            exp = exp * 10 + digit;
+        }
+
+        let final_exp = if positive_exp { exp } else { -exp };
+
+        self.f64_long_from_parts(positive, integer_end, final_exp)
+    }
+
+    // This cold code should not be inlined into the middle of the hot
+    // decimal-parsing loop above.
+    #[cfg(feature = "float_roundtrip")]
+    #[cold]
+    #[inline(never)]
+    fn parse_decimal_overflow(
+        &mut self,
+        positive: bool,
+        significand: u64,
+        exponent: i32,
+    ) -> Result<f64> {
+        let mut buffer = itoa::Buffer::new();
+        let significand = buffer.format(significand);
+        let fraction_digits = -exponent as usize;
+        self.scratch.clear();
+        if let Some(zeros) = fraction_digits.checked_sub(significand.len() + 1) {
+            self.scratch.extend(iter::repeat(b'0').take(zeros + 1));
+        }
+        self.scratch.extend_from_slice(significand.as_bytes());
+        let integer_end = self.scratch.len() - fraction_digits;
+        self.parse_long_decimal(positive, integer_end)
+    }
+
+    #[cfg(not(feature = "float_roundtrip"))]
+    #[cold]
+    #[inline(never)]
+    fn parse_decimal_overflow(
+        &mut self,
+        positive: bool,
+        significand: u64,
+        exponent: i32,
+    ) -> Result<f64> {
+        // The next multiply/add would overflow, so just ignore all further
+        // digits.
+        while let b'0'..=b'9' = tri!(self.peek_or_null()) {
+            self.eat_char();
+        }
+
+        match tri!(self.peek_or_null()) {
+            b'e' | b'E' => self.parse_exponent(positive, significand, exponent),
+            _ => self.f64_from_parts(positive, significand, exponent),
+        }
+    }
+
     // This cold code should not be inlined into the middle of the hot
     // exponent-parsing loop above.
     #[cold]
@@ -670,11 +864,11 @@ impl<'de, R: Read<'de>> Deserializer<R> {
     fn parse_exponent_overflow(
         &mut self,
         positive: bool,
-        significand: u64,
+        zero_significand: bool,
         positive_exp: bool,
     ) -> Result<f64> {
         // Error instead of +/- infinity.
-        if significand != 0 && positive_exp {
+        if !zero_significand && positive_exp {
             return Err(self.error(ErrorCode::NumberOutOfRange));
         }
 
@@ -682,6 +876,29 @@ impl<'de, R: Read<'de>> Deserializer<R> {
             self.eat_char();
         }
         Ok(if positive { 0.0 } else { -0.0 })
+    }
+
+    #[cfg(feature = "float_roundtrip")]
+    fn f64_long_from_parts(
+        &mut self,
+        positive: bool,
+        integer_end: usize,
+        exponent: i32,
+    ) -> Result<f64> {
+        let integer = &self.scratch[..integer_end];
+        let fraction = &self.scratch[integer_end..];
+
+        let f = if self.single_precision {
+            lexical::parse_truncated_float::<f32>(integer, fraction, exponent) as f64
+        } else {
+            lexical::parse_truncated_float::<f64>(integer, fraction, exponent)
+        };
+
+        if f.is_infinite() {
+            Err(self.error(ErrorCode::NumberOutOfRange))
+        } else {
+            Ok(if positive { f } else { -f })
+        }
     }
 
     fn parse_any_signed_number(&mut self) -> Result<ParserNumber> {
@@ -772,7 +989,7 @@ impl<'de, R: Read<'de>> Deserializer<R> {
     fn scan_number(&mut self, buf: &mut String) -> Result<()> {
         match tri!(self.peek_or_null()) {
             b'.' => self.scan_decimal(buf),
-            b'e' | b'E' => self.scan_exponent(buf),
+            e @ b'e' | e @ b'E' => self.scan_exponent(e as char, buf),
             _ => Ok(()),
         }
     }
@@ -797,19 +1014,20 @@ impl<'de, R: Read<'de>> Deserializer<R> {
         }
 
         match tri!(self.peek_or_null()) {
-            b'e' | b'E' => self.scan_exponent(buf),
+            e @ b'e' | e @ b'E' => self.scan_exponent(e as char, buf),
             _ => Ok(()),
         }
     }
 
     #[cfg(feature = "arbitrary_precision")]
-    fn scan_exponent(&mut self, buf: &mut String) -> Result<()> {
+    fn scan_exponent(&mut self, e: char, buf: &mut String) -> Result<()> {
         self.eat_char();
-        buf.push('e');
+        buf.push(e);
 
         match tri!(self.peek_or_null()) {
             b'+' => {
                 self.eat_char();
+                buf.push('+');
             }
             b'-' => {
                 self.eat_char();
@@ -832,41 +1050,6 @@ impl<'de, R: Read<'de>> Deserializer<R> {
         }
 
         Ok(())
-    }
-
-    fn f64_from_parts(
-        &mut self,
-        positive: bool,
-        significand: u64,
-        mut exponent: i32,
-    ) -> Result<f64> {
-        let mut f = significand as f64;
-        loop {
-            match POW10.get(exponent.wrapping_abs() as usize) {
-                Some(&pow) => {
-                    if exponent >= 0 {
-                        f *= pow;
-                        if f.is_infinite() {
-                            return Err(self.error(ErrorCode::NumberOutOfRange));
-                        }
-                    } else {
-                        f /= pow;
-                    }
-                    break;
-                }
-                None => {
-                    if f == 0.0 {
-                        break;
-                    }
-                    if exponent >= 0 {
-                        return Err(self.error(ErrorCode::NumberOutOfRange));
-                    }
-                    f /= 1e308;
-                    exponent += 308;
-                }
-            }
-        }
-        Ok(if positive { f } else { -f })
     }
 
     fn parse_object_colon(&mut self) -> Result<()> {
@@ -1114,6 +1297,7 @@ impl FromStr for Number {
     }
 }
 
+#[cfg(not(feature = "float_roundtrip"))]
 static POW10: [f64; 309] = [
     1e000, 1e001, 1e002, 1e003, 1e004, 1e005, 1e006, 1e007, 1e008, 1e009, //
     1e010, 1e011, 1e012, 1e013, 1e014, 1e015, 1e016, 1e017, 1e018, 1e019, //
@@ -1148,15 +1332,15 @@ static POW10: [f64; 309] = [
     1e300, 1e301, 1e302, 1e303, 1e304, 1e305, 1e306, 1e307, 1e308,
 ];
 
-macro_rules! deserialize_prim_number {
+macro_rules! deserialize_number {
     ($method:ident) => {
         fn $method<V>(self, visitor: V) -> Result<V::Value>
         where
             V: de::Visitor<'de>,
         {
-            self.deserialize_prim_number(visitor)
+            self.deserialize_number(visitor)
         }
-    }
+    };
 }
 
 #[cfg(not(feature = "unbounded_depth"))]
@@ -1303,16 +1487,28 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
         }
     }
 
-    deserialize_prim_number!(deserialize_i8);
-    deserialize_prim_number!(deserialize_i16);
-    deserialize_prim_number!(deserialize_i32);
-    deserialize_prim_number!(deserialize_i64);
-    deserialize_prim_number!(deserialize_u8);
-    deserialize_prim_number!(deserialize_u16);
-    deserialize_prim_number!(deserialize_u32);
-    deserialize_prim_number!(deserialize_u64);
-    deserialize_prim_number!(deserialize_f32);
-    deserialize_prim_number!(deserialize_f64);
+    deserialize_number!(deserialize_i8);
+    deserialize_number!(deserialize_i16);
+    deserialize_number!(deserialize_i32);
+    deserialize_number!(deserialize_i64);
+    deserialize_number!(deserialize_u8);
+    deserialize_number!(deserialize_u16);
+    deserialize_number!(deserialize_u32);
+    deserialize_number!(deserialize_u64);
+    #[cfg(not(feature = "float_roundtrip"))]
+    deserialize_number!(deserialize_f32);
+    deserialize_number!(deserialize_f64);
+
+    #[cfg(feature = "float_roundtrip")]
+    fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        self.single_precision = true;
+        let val = self.deserialize_number(visitor);
+        self.single_precision = false;
+        val
+    }
 
     serde_if_integer128! {
         fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value>
@@ -1445,7 +1641,7 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     ///
     /// [RFC 7159]: https://tools.ietf.org/html/rfc7159
     ///
-    /// The behavior of serde_jsonrc is specified to fail on non-UTF-8 strings
+    /// The behavior of serde_json_lenient is specified to fail on non-UTF-8 strings
     /// when deserializing into Rust UTF-8 string types such as String, and
     /// succeed with non-UTF-8 bytes when deserializing using this method.
     ///
@@ -1459,9 +1655,9 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     /// ```
     /// use serde_bytes::ByteBuf;
     ///
-    /// fn look_at_bytes() -> Result<(), serde_jsonrc::Error> {
+    /// fn look_at_bytes() -> Result<(), serde_json_lenient::Error> {
     ///     let json_data = b"\"some bytes: \xe5\x00\xe5\"";
-    ///     let bytes: ByteBuf = serde_jsonrc::from_slice(json_data)?;
+    ///     let bytes: ByteBuf = serde_json_lenient::from_slice(json_data)?;
     ///
     ///     assert_eq!(b'\xe5', bytes[12]);
     ///     assert_eq!(b'\0', bytes[13]);
@@ -1482,11 +1678,11 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     ///
     /// fn look_at_bytes() {
     ///     let json_data = b"\"invalid unicode surrogate: \\uD801\"";
-    ///     let parsed: Result<ByteBuf, _> = serde_jsonrc::from_slice(json_data);
+    ///     let parsed: Result<ByteBuf, _> = serde_json_lenient::from_slice(json_data);
     ///
     ///     assert!(parsed.is_err());
     ///
-    ///     let expected_msg = "unexpected end of hex escape at line 1 column 35";
+    ///     let expected_msg = "unexpected end of hex escape at line 1 column 34";
     ///     assert_eq!(expected_msg, parsed.unwrap_err().to_string());
     /// }
     /// #
@@ -1784,10 +1980,7 @@ struct SeqAccess<'a, R: 'a> {
 
 impl<'a, R: 'a> SeqAccess<'a, R> {
     fn new(de: &'a mut Deserializer<R>) -> Self {
-        SeqAccess {
-            de: de,
-            first: true,
-        }
+        SeqAccess { de, first: true }
     }
 }
 
@@ -1863,10 +2056,7 @@ struct MapAccess<'a, R: 'a> {
 
 impl<'a, R: 'a> MapAccess<'a, R> {
     fn new(de: &'a mut Deserializer<R>) -> Self {
-        MapAccess {
-            de: de,
-            first: true,
-        }
+        MapAccess { de, first: true }
     }
 }
 
@@ -1926,20 +2116,18 @@ impl<'de, 'a, R: Read<'de> + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
         tri!(self.de.parse_object_colon());
         let result = seed.deserialize(&mut *self.de);
 
-        if self.de.ignore_trailing_commas {
-            if result.is_ok() {
-                match tri!(self.de.parse_whitespace()) {
-                    Some(b',') => self.de.eat_char(),
-                    Some(b'}') => {
-                        // Ignore.
-                    }
-                    Some(_) => {
-                        return Err(self.de.peek_error(ErrorCode::ExpectedObjectCommaOrEnd));
-                    }
-                    None => {
-                        return Err(self.de.peek_error(ErrorCode::EofWhileParsingObject));
-                    }
-                };
+        if self.de.ignore_trailing_commas && result.is_ok() {
+            match tri!(self.de.parse_whitespace()) {
+                Some(b',') => self.de.eat_char(),
+                Some(b'}') => {
+                    // Ignore.
+                }
+                Some(_) => {
+                    return Err(self.de.peek_error(ErrorCode::ExpectedObjectCommaOrEnd));
+                }
+                None => {
+                    return Err(self.de.peek_error(ErrorCode::EofWhileParsingObject));
+                }
             };
         }
         result
@@ -1952,7 +2140,7 @@ struct VariantAccess<'a, R: 'a> {
 
 impl<'a, R: 'a> VariantAccess<'a, R> {
     fn new(de: &'a mut Deserializer<R>) -> Self {
-        VariantAccess { de: de }
+        VariantAccess { de }
     }
 }
 
@@ -2005,7 +2193,7 @@ struct UnitVariantAccess<'a, R: 'a> {
 
 impl<'a, R: 'a> UnitVariantAccess<'a, R> {
     fn new(de: &'a mut Deserializer<R>) -> Self {
-        UnitVariantAccess { de: de }
+        UnitVariantAccess { de }
     }
 }
 
@@ -2081,7 +2269,7 @@ macro_rules! deserialize_integer_key {
                 (Err(_), Reference::Copied(s)) => visitor.visit_str(s),
             }
         }
-    }
+    };
 }
 
 impl<'de, 'a, R> de::Deserializer<'de> for MapKey<'a, R>
@@ -2180,7 +2368,7 @@ where
 /// arrays, objects, or strings, or be followed by whitespace or a self-delineating value.
 ///
 /// ```
-/// use serde_jsonrc::{Deserializer, Value};
+/// use serde_json_lenient::{Deserializer, Value};
 ///
 /// fn main() {
 ///     let data = "{\"k\": 3}1\"cool\"\"stuff\" 3{}  [0, 1, 2]";
@@ -2195,6 +2383,7 @@ where
 pub struct StreamDeserializer<'de, R, T> {
     de: Deserializer<R>,
     offset: usize,
+    failed: bool,
     output: PhantomData<T>,
     lifetime: PhantomData<&'de ()>,
 }
@@ -2204,19 +2393,20 @@ where
     R: read::Read<'de>,
     T: de::Deserialize<'de>,
 {
-    /// Create a JSON stream deserializer from one of the possible serde_jsonrc
+    /// Create a JSON stream deserializer from one of the possible serde_json_lenient
     /// input sources.
     ///
     /// Typically it is more convenient to use one of these methods instead:
     ///
     ///   - Deserializer::from_str(...).into_iter()
-    ///   - Deserializer::from_bytes(...).into_iter()
+    ///   - Deserializer::from_slice(...).into_iter()
     ///   - Deserializer::from_reader(...).into_iter()
     pub fn new(read: R) -> Self {
         let offset = read.byte_offset();
         StreamDeserializer {
             de: Deserializer::new(read),
-            offset: offset,
+            offset,
+            failed: false,
             output: PhantomData,
             lifetime: PhantomData,
         }
@@ -2230,7 +2420,7 @@ where
     /// ```
     /// let data = b"[0] [1] [";
     ///
-    /// let de = serde_jsonrc::Deserializer::from_slice(data);
+    /// let de = serde_json_lenient::Deserializer::from_slice(data);
     /// let mut stream = de.into_iter::<Vec<i32>>();
     /// assert_eq!(0, stream.byte_offset());
     ///
@@ -2281,6 +2471,10 @@ where
     type Item = Result<T>;
 
     fn next(&mut self) -> Option<Result<T>> {
+        if R::should_early_return_if_failed && self.failed {
+            return None;
+        }
+
         // skip whitespaces, if any
         // this helps with trailing whitespaces, since whitespaces between
         // values are handled for us.
@@ -2309,12 +2503,25 @@ where
                             self.peek_end_of_value().map(|_| value)
                         }
                     }
-                    Err(e) => Err(e),
+                    Err(e) => {
+                        self.de.read.set_failed(&mut self.failed);
+                        Err(e)
+                    }
                 })
             }
-            Err(e) => Some(Err(e)),
+            Err(e) => {
+                self.de.read.set_failed(&mut self.failed);
+                Some(Err(e))
+            }
         }
     }
+}
+
+impl<'de, R, T> FusedIterator for StreamDeserializer<'de, R, T>
+where
+    R: Read<'de> + Fused,
+    T: de::Deserialize<'de>,
+{
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -2335,10 +2542,10 @@ where
 /// Deserialize an instance of type `T` from an IO stream of JSON.
 ///
 /// The content of the IO stream is deserialized directly from the stream
-/// without being buffered in memory by serde_jsonrc.
+/// without being buffered in memory by serde_json_lenient.
 ///
 /// When reading from a source against which short reads are not efficient, such
-/// as a [`File`], you will want to apply your own buffering because serde_jsonrc
+/// as a [`File`], you will want to apply your own buffering because serde_json_lenient
 /// will not buffer the input. See [`std::io::BufReader`].
 ///
 /// It is expected that the input stream ends after the deserialized object.
@@ -2374,13 +2581,13 @@ where
 ///     location: String,
 /// }
 ///
-/// fn read_user_from_file<P: AsRef<Path>>(path: P) -> Result<User, Box<Error>> {
+/// fn read_user_from_file<P: AsRef<Path>>(path: P) -> Result<User, Box<dyn Error>> {
 ///     // Open the file in read-only mode with buffer.
 ///     let file = File::open(path)?;
 ///     let reader = BufReader::new(file);
 ///
 ///     // Read the JSON contents of the file as an instance of `User`.
-///     let u = serde_jsonrc::from_reader(reader)?;
+///     let u = serde_json_lenient::from_reader(reader)?;
 ///
 ///     // Return the `User`.
 ///     Ok(u)
@@ -2409,7 +2616,7 @@ where
 /// }
 ///
 /// fn read_user_from_stream(tcp_stream: TcpStream) -> Result<User, Box<dyn Error>> {
-///     let mut de = serde_jsonrc::Deserializer::from_reader(tcp_stream);
+///     let mut de = serde_json_lenient::Deserializer::from_reader(tcp_stream);
 ///     let u = User::deserialize(&mut de)?;
 ///
 ///     Ok(u)
@@ -2436,6 +2643,7 @@ where
 /// the JSON map or some number is too big to fit in the expected primitive
 /// type.
 #[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 pub fn from_reader<R, T>(rdr: R) -> Result<T>
 where
     R: crate::io::Read,
@@ -2465,7 +2673,7 @@ where
 ///             \"location\": \"Menlo Park, CA\"
 ///         }";
 ///
-///     let u: User = serde_jsonrc::from_slice(j).unwrap();
+///     let u: User = serde_json_lenient::from_slice(j).unwrap();
 ///     println!("{:#?}", u);
 /// }
 /// ```
@@ -2507,7 +2715,7 @@ where
 ///             \"location\": \"Menlo Park, CA\"
 ///         }";
 ///
-///     let u: User = serde_jsonrc::from_str(j).unwrap();
+///     let u: User = serde_json_lenient::from_str(j).unwrap();
 ///     println!("{:#?}", u);
 /// }
 /// ```
