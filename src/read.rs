@@ -191,7 +191,7 @@ impl UtfOutputStrategy<str> for StrUtfOutputStrategy {
         slice: &'s [u8],
     ) -> Result<&'s str> {
         match str::from_utf8(slice) {
-            Ok(ref s) => Ok(s),
+            Ok(s) => Ok(s),
             Err(_) => error(read, ErrorCode::InvalidUnicodeCodePoint),
         }
     }
@@ -231,7 +231,7 @@ impl SubstitutingStrUtfOutputStrategy {
     }
 
     fn convert_unchecked<'a>(&self, slice: &'a [u8]) -> &'a str {
-        unsafe { &str::from_utf8_unchecked(slice) }
+        unsafe { str::from_utf8_unchecked(slice) }
     }
 }
 
@@ -280,7 +280,7 @@ impl UtfOutputStrategy<str> for UncheckedStrUtfOutputStrategy {
     fn to_result_simple<'de, 's, R: Read<'de>>(&self, _: &R, slice: &'s [u8]) -> Result<&'s str> {
         // The input is assumed to be valid UTF-8 and the \u-escapes are
         // checked along the way, so don't need to check here.
-        Ok(unsafe { &str::from_utf8_unchecked(slice) })
+        Ok(unsafe { str::from_utf8_unchecked(slice) })
     }
 }
 
@@ -288,7 +288,7 @@ struct SliceUtfOutputStrategy;
 
 impl UtfOutputStrategy<[u8]> for SliceUtfOutputStrategy {
     fn to_result_simple<'de, 's, R: Read<'de>>(&self, _: &R, slice: &'s [u8]) -> Result<&'s [u8]> {
-        Ok(&slice)
+        Ok(slice)
     }
 }
 
@@ -1063,7 +1063,7 @@ fn parse_escape_or_fail<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>) 
                 }
                 // Optionally, refuse to decode Unicode non-characters.
                 0xFDD0..=0xFDEF => '\u{fffd}',
-                n if (n & 0xFFFE == 0xFFFE || n & 0xFFFF == 0xFFFF) => '\u{fffd}',
+                n if (n & 0xFFFE == 0xFFFE || n == 0xFFFF) => '\u{fffd}',
 
                 // Non-BMP characters are encoded as a sequence of
                 // two hex escapes, representing UTF-16 surrogates.

@@ -1147,7 +1147,10 @@ fn test_parse_object() {
         ("{\"a\":", "EOF while parsing a value at line 1 column 5"),
         ("{\"a\":1", "EOF while parsing an object at line 1 column 6"),
         ("{\"a\":1 1", "expected `,` or `}` at line 1 column 8"),
-        ("{\"a\":1,", "EOF while parsing an object at line 1 column 7"),
+        (
+            "{\"a\":1,",
+            "EOF while parsing an object at line 1 column 7",
+        ),
         ("{}a", "trailing characters at line 1 column 3"),
     ]);
 
