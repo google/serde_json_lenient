@@ -1973,10 +1973,7 @@ struct SeqAccess<'a, R: 'a> {
 
 impl<'a, R: 'a> SeqAccess<'a, R> {
     fn new(de: &'a mut Deserializer<R>) -> Self {
-        SeqAccess {
-            de,
-            first: true,
-        }
+        SeqAccess { de, first: true }
     }
 }
 
@@ -2052,10 +2049,7 @@ struct MapAccess<'a, R: 'a> {
 
 impl<'a, R: 'a> MapAccess<'a, R> {
     fn new(de: &'a mut Deserializer<R>) -> Self {
-        MapAccess {
-            de,
-            first: true,
-        }
+        MapAccess { de, first: true }
     }
 }
 
