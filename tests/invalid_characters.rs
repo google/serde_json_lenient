@@ -8,7 +8,7 @@ use serde_json_lenient::de::SliceRead;
 use serde_json_lenient::{Deserializer, Error, Value};
 
 fn from_slice_with_unicode_substitution(s: &[u8]) -> Result<Value, Error> {
-    let mut de = Deserializer::new(SliceRead::new(s, true));
+    let mut de = Deserializer::new(SliceRead::new(s, true, false, false, false));
     Deserialize::deserialize(&mut de)
 }
 

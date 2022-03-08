@@ -430,7 +430,7 @@ mod lib {
 #[doc(inline)]
 pub use crate::de::from_reader;
 #[doc(inline)]
-pub use crate::de::{from_slice, from_str, Deserializer, StreamDeserializer};
+pub use crate::de::{from_slice, from_str, from_str_lenient, Deserializer, StreamDeserializer};
 #[doc(inline)]
 pub use crate::error::{Error, Result};
 #[doc(inline)]
