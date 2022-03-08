@@ -1974,7 +1974,7 @@ struct SeqAccess<'a, R: 'a> {
 impl<'a, R: 'a> SeqAccess<'a, R> {
     fn new(de: &'a mut Deserializer<R>) -> Self {
         SeqAccess {
-            de: de,
+            de,
             first: true,
         }
     }
@@ -2053,7 +2053,7 @@ struct MapAccess<'a, R: 'a> {
 impl<'a, R: 'a> MapAccess<'a, R> {
     fn new(de: &'a mut Deserializer<R>) -> Self {
         MapAccess {
-            de: de,
+            de,
             first: true,
         }
     }
@@ -2115,20 +2115,18 @@ impl<'de, 'a, R: Read<'de> + 'a> de::MapAccess<'de> for MapAccess<'a, R> {
         tri!(self.de.parse_object_colon());
         let result = seed.deserialize(&mut *self.de);
 
-        if self.de.ignore_trailing_commas {
-            if result.is_ok() {
-                match tri!(self.de.parse_whitespace()) {
-                    Some(b',') => self.de.eat_char(),
-                    Some(b'}') => {
-                        // Ignore.
-                    }
-                    Some(_) => {
-                        return Err(self.de.peek_error(ErrorCode::ExpectedObjectCommaOrEnd));
-                    }
-                    None => {
-                        return Err(self.de.peek_error(ErrorCode::EofWhileParsingObject));
-                    }
-                };
+        if self.de.ignore_trailing_commas && result.is_ok() {
+            match tri!(self.de.parse_whitespace()) {
+                Some(b',') => self.de.eat_char(),
+                Some(b'}') => {
+                    // Ignore.
+                }
+                Some(_) => {
+                    return Err(self.de.peek_error(ErrorCode::ExpectedObjectCommaOrEnd));
+                }
+                None => {
+                    return Err(self.de.peek_error(ErrorCode::EofWhileParsingObject));
+                }
             };
         }
         result
