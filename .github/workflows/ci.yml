@@ -65,15 +65,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.36.0
       - run: cargo check --manifest-path tests/crate/Cargo.toml --no-default-features --features alloc
 
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    steps:
-      - uses: actions/checkout@v2
-      - uses: dtolnay/rust-toolchain@clippy
-      - run: cargo clippy --tests -- -Dclippy::all -Dclippy::pedantic
-      - run: cargo clippy --all-features --tests -- -Dclippy::all -Dclippy::pedantic
+  #clippy:
+  #name: Clippy
+  #runs-on: ubuntu-latest
+  #if: github.event_name != 'pull_request'
+  #steps:
+  #- uses: actions/checkout@v2
+  #- uses: dtolnay/rust-toolchain@clippy
+  #- run: cargo clippy --tests -- -Dclippy::all -Dclippy::pedantic
+  #- run: cargo clippy --all-features --tests -- -Dclippy::all -Dclippy::pedantic
 
   docs:
     name: Documentation
