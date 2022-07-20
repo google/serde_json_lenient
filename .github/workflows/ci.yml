@@ -5,6 +5,9 @@ on:
   pull_request:
   schedule: [cron: "40 1 * * *"]
 
+env:
+  RUSTFLAGS: -Dwarnings
+
 jobs:
   test:
     name: Rust nightly ${{matrix.os == 'windows' && '(windows)' || ''}}
@@ -14,7 +17,7 @@ jobs:
       matrix:
         os: [ubuntu, windows]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@nightly
       - run: cargo test
       - run: cargo test --features preserve_order --tests -- --skip ui --exact
@@ -30,23 +33,27 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: [beta, stable]
+        rust: [beta, stable, 1.53.0, 1.46.0, 1.45.0, 1.40.0, 1.38.0, 1.36.0]
         os: [ubuntu]
         include:
           - rust: stable
             os: windows
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{matrix.rust}}
       - run: cargo check
-      - run: cargo check --features preserve_order
-      - run: cargo check --manifest-path tests/crate/Cargo.toml --no-default-features --features alloc,preserve_order
       - run: cargo check --features float_roundtrip
       - run: cargo check --features arbitrary_precision
       - run: cargo check --features raw_value
       - run: cargo check --features unbounded_depth
+      - run: cargo check --manifest-path tests/crate/Cargo.toml --no-default-features --features alloc
+      - run: cargo check --manifest-path tests/crate/Cargo.toml --no-default-features --features alloc,raw_value
+      - run: cargo check --features preserve_order
+        if: matrix.rust != '1.45.0' && matrix.rust != '1.40.0' && matrix.rust != '1.38.0' && matrix.rust != '1.36.0'
+      - run: cargo check --manifest-path tests/crate/Cargo.toml --no-default-features --features alloc,preserve_order
+        if: matrix.rust != '1.45.0' && matrix.rust != '1.40.0' && matrix.rust != '1.38.0' && matrix.rust != '1.36.0'
       - name: Build without std
         run: |
           rustup target add aarch64-unknown-none
@@ -57,29 +64,32 @@ jobs:
               --features alloc
         if: matrix.rust == 'stable' && matrix.os == 'ubuntu'
 
-  nostd:
-    name: Rust 1.36.0
+  miri:
+    name: Miri
     runs-on: ubuntu-latest
+    env:
+      MIRIFLAGS: -Zmiri-tag-raw-pointers
     steps:
-      - uses: actions/checkout@v2
-      - uses: dtolnay/rust-toolchain@1.36.0
-      - run: cargo check --manifest-path tests/crate/Cargo.toml --no-default-features --features alloc
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@miri
+      - run: cargo miri test
+      - run: cargo miri test --features preserve_order,float_roundtrip,arbitrary_precision,raw_value
 
-  #clippy:
-  #name: Clippy
-  #runs-on: ubuntu-latest
-  #if: github.event_name != 'pull_request'
-  #steps:
-  #- uses: actions/checkout@v2
-  #- uses: dtolnay/rust-toolchain@clippy
-  #- run: cargo clippy --tests -- -Dclippy::all -Dclippy::pedantic
-  #- run: cargo clippy --all-features --tests -- -Dclippy::all -Dclippy::pedantic
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@clippy
+      - run: cargo clippy --tests -- -Dclippy::all -Dclippy::pedantic
+      - run: cargo clippy --all-features --tests -- -Dclippy::all -Dclippy::pedantic
 
   docs:
     name: Documentation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@nightly
       - run: cargo doc --features raw_value,unbounded_depth
         env:
@@ -89,7 +99,7 @@ jobs:
     name: Fuzz
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@nightly
       - run: cargo install cargo-fuzz --debug
       - run: cargo fuzz build -O

@@ -3,10 +3,16 @@
 use crate::error::{Error, ErrorCode, Result};
 #[cfg(feature = "float_roundtrip")]
 use crate::lexical;
-use crate::lib::str::FromStr;
-use crate::lib::*;
 use crate::number::Number;
 use crate::read::{self, Fused, Reference};
+use alloc::string::String;
+use alloc::vec::Vec;
+#[cfg(feature = "float_roundtrip")]
+use core::iter;
+use core::iter::FusedIterator;
+use core::marker::PhantomData;
+use core::result;
+use core::str::FromStr;
 use serde::de::{self, Expected, Unexpected};
 use serde::{forward_to_deserialize_any, serde_if_integer128};
 
@@ -97,7 +103,9 @@ impl<'a> Deserializer<read::StrRead<'a>> {
 
 macro_rules! overflow {
     ($a:ident * 10 + $b:ident, $c:expr) => {
-        $a >= $c / 10 && ($a > $c / 10 || $b > $c % 10)
+        match $c {
+            c => $a >= c / 10 && ($a > c / 10 || $b > c % 10),
+        }
     };
 }
 
@@ -946,6 +954,15 @@ impl<'de, R: Read<'de>> Deserializer<R> {
             buf.push('-');
         }
         self.scan_integer(&mut buf)?;
+        if positive {
+            if let Ok(unsigned) = buf.parse() {
+                return Ok(ParserNumber::U64(unsigned));
+            }
+        } else {
+            if let Ok(signed) = buf.parse() {
+                return Ok(ParserNumber::I64(signed));
+            }
+        }
         Ok(ParserNumber::String(buf))
     }
 
@@ -1650,7 +1667,8 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     ///
     /// # Examples
     ///
-    /// You can use this to parse JSON strings containing invalid UTF-8 bytes.
+    /// You can use this to parse JSON strings containing invalid UTF-8 bytes,
+    /// or unpaired surrogates.
     ///
     /// ```
     /// use serde_bytes::ByteBuf;
@@ -1670,20 +1688,18 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     /// ```
     ///
     /// Backslash escape sequences like `\n` are still interpreted and required
-    /// to be valid, and `\u` escape sequences are required to represent valid
-    /// Unicode code points.
+    /// to be valid. `\u` escape sequences are required to represent a valid
+    /// Unicode code point or lone surrogate.
     ///
     /// ```
     /// use serde_bytes::ByteBuf;
     ///
-    /// fn look_at_bytes() {
-    ///     let json_data = b"\"invalid unicode surrogate: \\uD801\"";
-    ///     let parsed: Result<ByteBuf, _> = serde_json_lenient::from_slice(json_data);
-    ///
-    ///     assert!(parsed.is_err());
-    ///
-    ///     let expected_msg = "unexpected end of hex escape at line 1 column 34";
-    ///     assert_eq!(expected_msg, parsed.unwrap_err().to_string());
+    /// fn look_at_bytes() -> Result<(), serde_json::Error> {
+    ///     let json_data = b"\"lone surrogate: \\uD801\"";
+    ///     let bytes: ByteBuf = serde_json_lenient::from_slice(json_data)?;
+    ///     let expected = b"lone surrogate: \xED\xA0\x81";
+    ///     assert_eq!(expected, bytes.as_slice());
+    ///     Ok(())
     /// }
     /// #
     /// # look_at_bytes();
@@ -2315,10 +2331,18 @@ where
     }
 
     #[inline]
-    fn deserialize_newtype_struct<V>(self, _name: &'static str, visitor: V) -> Result<V::Value>
+    fn deserialize_newtype_struct<V>(self, name: &'static str, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
+        #[cfg(feature = "raw_value")]
+        {
+            if name == crate::raw::TOKEN {
+                return self.de.deserialize_raw_value(visitor);
+            }
+        }
+
+        let _ = name;
         visitor.visit_newtype_struct(self)
     }
 
