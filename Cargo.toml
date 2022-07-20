@@ -14,19 +14,20 @@ documentation = "https://docs.rs/serde_json_lenient/latest/"
 keywords = ["json", "serde", "serialization"]
 categories = ["encoding"]
 readme = "README.md"
-include = ["build.rs", "src/**/*.rs", "README.md", "LICENSE-APACHE", "LICENSE-MIT"]
 edition = "2018"
-rust-version = "1.31"
+rust-version = "1.36"
 
 [dependencies]
 serde = { version = "1.0.100", default-features = false }
 indexmap = { version = "1.5", optional = true }
-itoa = { version = "0.4.3", default-features = false }
+itoa = "1.0"
 ryu = "1.0"
 
 [dev-dependencies]
 automod = "1.0"
+ref-cast = "1.0"
 rustversion = "1.0"
+serde = { version = "1.0.100", features = ["derive"] }
 serde_bytes = "0.11"
 serde_derive = "1.0"
 serde_stacker = "0.1"
