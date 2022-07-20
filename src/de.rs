@@ -1694,7 +1694,7 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
     /// ```
     /// use serde_bytes::ByteBuf;
     ///
-    /// fn look_at_bytes() -> Result<(), serde_json::Error> {
+    /// fn look_at_bytes() -> Result<(), serde_json_lenient::Error> {
     ///     let json_data = b"\"lone surrogate: \\uD801\"";
     ///     let bytes: ByteBuf = serde_json_lenient::from_slice(json_data)?;
     ///     let expected = b"lone surrogate: \xED\xA0\x81";
