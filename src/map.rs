@@ -249,6 +249,19 @@ impl Map<String, Value> {
             iter: self.map.values_mut(),
         }
     }
+
+    /// Retains only the elements specified by the predicate.
+    ///
+    /// In other words, remove all pairs `(k, v)` such that `f(&k, &mut v)`
+    /// returns `false`.
+    #[cfg(not(no_btreemap_retain))]
+    #[inline]
+    pub fn retain<F>(&mut self, f: F)
+    where
+        F: FnMut(&String, &mut Value) -> bool,
+    {
+        self.map.retain(f);
+    }
 }
 
 #[allow(clippy::derivable_impls)] // clippy bug: https://github.com/rust-lang/rust-clippy/issues/7655
