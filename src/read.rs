@@ -1218,13 +1218,7 @@ where
             tri!(read.decode_hex_escape(4));
         }
         b'x' => {
-            let c: u32 = tri!(read.decode_hex_escape(2)).into();
-            match char::from_u32(c) {
-                Some(_) => {}
-                None => {
-                    return error(read, ErrorCode::InvalidUnicodeCodePoint);
-                }
-            };
+            tri!(read.decode_hex_escape(2));
         }
         _ => {
             return error(read, ErrorCode::InvalidEscape);
