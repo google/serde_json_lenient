@@ -1607,7 +1607,7 @@ fn test_serialize_map_with_no_len() {
 #[cfg(not(miri))]
 #[test]
 fn test_deserialize_from_stream() {
-    use serde_json::to_writer;
+    use serde_json_lenient::to_writer;
     use std::net::{TcpListener, TcpStream};
     use std::thread;
 

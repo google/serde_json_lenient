@@ -65,8 +65,8 @@ pub struct Struct {
 #[test]
 fn test() {
     let j = r#" {"i":100} "#;
-    println!("{:?}", serde_json::from_str::<Struct>(j).unwrap());
+    println!("{:?}", serde_json_lenient::from_str::<Struct>(j).unwrap());
 
     let j = r#" {"i":"100"} "#;
-    println!("{:?}", serde_json::from_str::<Struct>(j).unwrap());
+    println!("{:?}", serde_json_lenient::from_str::<Struct>(j).unwrap());
 }
