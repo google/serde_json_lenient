@@ -1,10 +1,12 @@
 #![cfg(not(feature = "preserve_order"))]
 #![allow(
+    clippy::assertions_on_result_states,
     clippy::cast_precision_loss,
+    clippy::derive_partial_eq_without_eq,
     clippy::excessive_precision,
     clippy::float_cmp,
     clippy::items_after_statements,
-    clippy::let_underscore_drop,
+    clippy::let_underscore_untyped,
     clippy::shadow_unrelated,
     clippy::too_many_lines,
     clippy::unreadable_literal,
@@ -19,21 +21,28 @@ trace_macros!(true);
 #[macro_use]
 mod macros;
 
+#[cfg(feature = "raw_value")]
+use ref_cast::RefCast;
 use serde::de::{self, IgnoredAny, IntoDeserializer};
-use serde::ser::{self, Serializer};
+use serde::ser::{self, SerializeMap, SerializeSeq, Serializer};
 use serde::{Deserialize, Serialize};
 use serde_bytes::{ByteBuf, Bytes};
+#[cfg(feature = "raw_value")]
+use serde_json_lenient::value::RawValue;
 use serde_json_lenient::{
     from_reader, from_slice, from_str, from_value, json, to_string, to_string_pretty, to_value,
-    to_vec, to_writer, Deserializer, Number, Value,
+    to_vec, Deserializer, Number, Value,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeMap;
+#[cfg(feature = "raw_value")]
+use std::collections::HashMap;
 use std::fmt::{self, Debug};
 use std::hash::{Hash, Hasher};
 use std::io;
 use std::iter;
 use std::marker::PhantomData;
+use std::mem;
 use std::str::FromStr;
 use std::string::ToString;
 use std::{f32, f64};
@@ -86,7 +95,7 @@ where
         let s = to_string(value).unwrap();
         assert_eq!(s, out);
 
-        let v = to_value(&value).unwrap();
+        let v = to_value(value).unwrap();
         let s = to_string(&v).unwrap();
         assert_eq!(s, out);
     }
@@ -102,7 +111,7 @@ where
         let s = to_string_pretty(value).unwrap();
         assert_eq!(s, out);
 
-        let v = to_value(&value).unwrap();
+        let v = to_value(value).unwrap();
         let s = to_string_pretty(&v).unwrap();
         assert_eq!(s, out);
     }
@@ -712,11 +721,7 @@ fn test_parse_char() {
         ),
         (
             "10",
-            if cfg!(feature = "arbitrary_precision") {
-                "invalid type: number, expected a character at line 1 column 2"
-            } else {
-                "invalid type: integer `10`, expected a character at line 1 column 2"
-            },
+            "invalid type: integer `10`, expected a character at line 1 column 2",
         ),
     ]);
 
@@ -1086,7 +1091,7 @@ fn test_parse_string() {
     ]);
 
     test_parse_ok(vec![
-        ("\"\"", "".to_string()),
+        ("\"\"", String::new()),
         ("\"foo\"", "foo".to_string()),
         (" \"foo\" ", "foo".to_string()),
         ("\"\\\"\"", "\"".to_string()),
@@ -1187,11 +1192,7 @@ fn test_parse_struct() {
     test_parse_err::<Outer>(&[
         (
             "5",
-            if cfg!(feature = "arbitrary_precision") {
-                "invalid type: number, expected struct Outer at line 1 column 1"
-            } else {
-                "invalid type: integer `5`, expected struct Outer at line 1 column 1"
-            },
+            "invalid type: integer `5`, expected struct Outer at line 1 column 1",
         ),
         (
             "\"hello\"",
@@ -1443,7 +1444,6 @@ fn test_serialize_seq_with_no_len() {
         where
             S: ser::Serializer,
         {
-            use serde::ser::SerializeSeq;
             let mut seq = serializer.serialize_seq(None)?;
             for elem in &self.0 {
                 seq.serialize_element(elem)?;
@@ -1530,7 +1530,6 @@ fn test_serialize_map_with_no_len() {
         where
             S: ser::Serializer,
         {
-            use serde::ser::SerializeMap;
             let mut map = serializer.serialize_map(None)?;
             for (k, v) in &self.0 {
                 map.serialize_entry(k, v)?;
@@ -1607,10 +1606,11 @@ fn test_serialize_map_with_no_len() {
     assert_eq!(s, expected);
 }
 
+#[cfg(not(miri))]
 #[test]
 fn test_deserialize_from_stream() {
-    use serde::Deserialize;
-    use std::net;
+    use serde_json_lenient::to_writer;
+    use std::net::{TcpListener, TcpStream};
     use std::thread;
 
     #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -1618,7 +1618,7 @@ fn test_deserialize_from_stream() {
         message: String,
     }
 
-    let l = net::TcpListener::bind("localhost:20000").unwrap();
+    let l = TcpListener::bind("localhost:20000").unwrap();
 
     thread::spawn(|| {
         let l = l;
@@ -1635,7 +1635,7 @@ fn test_deserialize_from_stream() {
         }
     });
 
-    let mut stream = net::TcpStream::connect("localhost:20000").unwrap();
+    let mut stream = TcpStream::connect("localhost:20000").unwrap();
     let request = Message {
         message: "hi there".to_string(),
     };
@@ -1702,6 +1702,48 @@ fn test_byte_buf_de() {
 }
 
 #[test]
+fn test_byte_buf_de_lone_surrogate() {
+    let bytes = ByteBuf::from(vec![237, 160, 188]);
+    let v: ByteBuf = from_str(r#""\ud83c""#).unwrap();
+    assert_eq!(v, bytes);
+
+    let bytes = ByteBuf::from(vec![237, 160, 188, 10]);
+    let v: ByteBuf = from_str(r#""\ud83c\n""#).unwrap();
+    assert_eq!(v, bytes);
+
+    let bytes = ByteBuf::from(vec![237, 160, 188, 32]);
+    let v: ByteBuf = from_str(r#""\ud83c ""#).unwrap();
+    assert_eq!(v, bytes);
+
+    let bytes = ByteBuf::from(vec![237, 176, 129]);
+    let v: ByteBuf = from_str(r#""\udc01""#).unwrap();
+    assert_eq!(v, bytes);
+
+    let res = from_str::<ByteBuf>(r#""\ud83c\!""#);
+    assert!(res.is_err());
+
+    let res = from_str::<ByteBuf>(r#""\ud83c\u""#);
+    assert!(res.is_err());
+
+    let res = from_str::<ByteBuf>(r#""\ud83c\ud83c""#);
+    assert!(res.is_err());
+}
+
+#[cfg(feature = "raw_value")]
+#[test]
+fn test_raw_de_lone_surrogate() {
+    use serde_json_lenient::value::RawValue;
+
+    assert!(from_str::<Box<RawValue>>(r#""\ud83c""#).is_ok());
+    assert!(from_str::<Box<RawValue>>(r#""\ud83c\n""#).is_ok());
+    assert!(from_str::<Box<RawValue>>(r#""\ud83c ""#).is_ok());
+    assert!(from_str::<Box<RawValue>>(r#""\udc01 ""#).is_ok());
+    assert!(from_str::<Box<RawValue>>(r#""\udc01\!""#).is_err());
+    assert!(from_str::<Box<RawValue>>(r#""\udc01\u""#).is_err());
+    assert!(from_str::<Box<RawValue>>(r#""\ud83c\ud83c""#).is_ok());
+}
+
+#[test]
 fn test_byte_buf_de_multiple() {
     let s: Vec<ByteBuf> = from_str(r#"["ab\nc", "cd\ne"]"#).unwrap();
     let a = ByteBuf::from(b"ab\nc".to_vec());
@@ -1748,8 +1790,6 @@ fn test_json_pointer() {
 
 #[test]
 fn test_json_pointer_mut() {
-    use std::mem;
-
     // Test case taken from https://tools.ietf.org/html/rfc6901#page-5
     let mut data: Value = from_str(
         r#"{
@@ -1875,7 +1915,7 @@ fn test_deny_float_key() {
 
     // map with float key
     let map = treemap!(Float => "x");
-    assert!(serde_json_lenient::to_value(&map).is_err());
+    assert!(serde_json_lenient::to_value(map).is_err());
 }
 
 #[test]
@@ -2128,11 +2168,30 @@ fn test_integer128() {
     ]);
 }
 
+#[test]
+fn test_integer128_to_value() {
+    let signed = &[i128::from(i64::min_value()), i128::from(u64::max_value())];
+    let unsigned = &[0, u128::from(u64::max_value())];
+
+    for integer128 in signed {
+        let expected = integer128.to_string();
+        assert_eq!(to_value(integer128).unwrap().to_string(), expected);
+    }
+
+    for integer128 in unsigned {
+        let expected = integer128.to_string();
+        assert_eq!(to_value(integer128).unwrap().to_string(), expected);
+    }
+
+    if !cfg!(feature = "arbitrary_precision") {
+        let err = to_value(u128::from(u64::max_value()) + 1).unwrap_err();
+        assert_eq!(err.to_string(), "number out of range");
+    }
+}
+
 #[cfg(feature = "raw_value")]
 #[test]
 fn test_borrowed_raw_value() {
-    use serde_json_lenient::value::RawValue;
-
     #[derive(Serialize, Deserialize)]
     struct Wrapper<'a> {
         a: i8,
@@ -2164,9 +2223,45 @@ fn test_borrowed_raw_value() {
 
 #[cfg(feature = "raw_value")]
 #[test]
-fn test_boxed_raw_value() {
-    use serde_json_lenient::value::RawValue;
+fn test_raw_value_in_map_key() {
+    #[derive(RefCast)]
+    #[repr(transparent)]
+    struct RawMapKey(RawValue);
 
+    impl<'de> Deserialize<'de> for &'de RawMapKey {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            let raw_value = <&RawValue>::deserialize(deserializer)?;
+            Ok(RawMapKey::ref_cast(raw_value))
+        }
+    }
+
+    impl PartialEq for RawMapKey {
+        fn eq(&self, other: &Self) -> bool {
+            self.0.get() == other.0.get()
+        }
+    }
+
+    impl Eq for RawMapKey {}
+
+    impl Hash for RawMapKey {
+        fn hash<H: Hasher>(&self, hasher: &mut H) {
+            self.0.get().hash(hasher);
+        }
+    }
+
+    let map_from_str: HashMap<&RawMapKey, &RawValue> =
+        serde_json_lenient::from_str(r#" {"\\k":"\\v"} "#).unwrap();
+    let (map_k, map_v) = map_from_str.into_iter().next().unwrap();
+    assert_eq!("\"\\\\k\"", map_k.0.get());
+    assert_eq!("\"\\\\v\"", map_v.get());
+}
+
+#[cfg(feature = "raw_value")]
+#[test]
+fn test_boxed_raw_value() {
     #[derive(Serialize, Deserialize)]
     struct Wrapper {
         a: i8,
@@ -2213,8 +2308,6 @@ fn test_boxed_raw_value() {
 #[cfg(feature = "raw_value")]
 #[test]
 fn test_raw_invalid_utf8() {
-    use serde_json_lenient::value::RawValue;
-
     let j = &[b'"', b'\xCE', b'\xF8', b'"'];
     let value_err = serde_json_lenient::from_slice::<Value>(j).unwrap_err();
     let raw_value_err = serde_json_lenient::from_slice::<Box<RawValue>>(j).unwrap_err();
@@ -2226,6 +2319,15 @@ fn test_raw_invalid_utf8() {
     assert_eq!(
         raw_value_err.to_string(),
         "invalid unicode code point at line 1 column 4",
+    );
+}
+
+#[cfg(feature = "raw_value")]
+#[test]
+fn test_serialize_unsized_value_to_raw_value() {
+    assert_eq!(
+        serde_json_lenient::value::to_raw_value("foobar").unwrap().get(),
+        r#""foobar""#,
     );
 }
 

@@ -1,9 +1,9 @@
 [package]
 name = "serde_json_lenient-fuzz"
 version = "0.0.0"
-authors = ["David Korczynski <david@adalogics.com>"]
+authors = ["David Tolnay <dtolnay@gmail.com>"]
+edition = "2021"
 publish = false
-edition = "2018"
 
 [package.metadata]
 cargo-fuzz = true
@@ -15,6 +15,7 @@ serde_json_lenient = { path = ".." }
 [[bin]]
 name = "from_slice"
 path = "fuzz_targets/from_slice.rs"
+test = false
+doc = false
 
-# Prevent this from interfering with workspaces
 [workspace]
