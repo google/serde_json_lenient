@@ -1004,6 +1004,7 @@ pub trait Fused: private::Sealed {}
 impl<'a> Fused for SliceRead<'a> {}
 impl<'a> Fused for StrRead<'a> {}
 
+#[cfg(feature = "std")]
 const ESCAPE: [bool; 256] = get_escapes(false);
 
 // Lookup table of bytes that must be escaped. A value of true at index i means
