@@ -27,6 +27,6 @@ fn test_invalid_characters() {
 #[test]
 fn test_invalid_utf16_escape_sequence() {
     let s = "{\"key\": \"value\\udfff\"}".as_bytes();
-    let value: Value = from_slice_with_unicode_substitution(&s).unwrap();
+    let value: Value = from_slice_with_unicode_substitution(s).unwrap();
     assert_eq!(value, json!({"key": "value\u{fffd}"}));
 }

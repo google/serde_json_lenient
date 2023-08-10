@@ -211,7 +211,7 @@ struct SubstitutingStrUtfOutputStrategy;
 impl SubstitutingStrUtfOutputStrategy {
     /// Returns whether conversion occurred. If not, output is unchanged
     /// and the caller should just directly use the input slice.
-    fn from_utf8_lossy(&self, output: &mut Vec<u8>, mut input: &[u8]) -> bool {
+    fn convert_from_utf8_lossy(&self, output: &mut Vec<u8>, mut input: &[u8]) -> bool {
         let mut first = true;
         loop {
             match core::str::from_utf8(input) {
@@ -228,7 +228,7 @@ impl SubstitutingStrUtfOutputStrategy {
                     output.extend("\u{fffd}".bytes());
 
                     if let Some(invalid_sequence_length) = error.error_len() {
-                        input = &after_valid[invalid_sequence_length..]
+                        input = &after_valid[invalid_sequence_length..];
                     } else {
                         break;
                     }
@@ -259,7 +259,7 @@ impl UtfOutputStrategy<str> for SubstitutingStrUtfOutputStrategy {
         slice: &'s [u8],
         scratch: &'de mut Vec<u8>,
     ) -> Result<Reference<'s, 'de, str>> {
-        let r = self.from_utf8_lossy(scratch, slice);
+        let r = self.convert_from_utf8_lossy(scratch, slice);
         Ok(if r {
             Reference::Copied(self.convert_unchecked(scratch))
         } else {
@@ -277,7 +277,7 @@ impl UtfOutputStrategy<str> for SubstitutingStrUtfOutputStrategy {
     }
 
     fn extend_scratch(&self, scratch: &mut Vec<u8>, slice: &[u8]) {
-        if !self.from_utf8_lossy(scratch, slice) {
+        if !self.convert_from_utf8_lossy(scratch, slice) {
             scratch.extend(slice);
         }
     }
@@ -319,6 +319,7 @@ where
 //
 // This is more efficient than other iterators because peek() can be read-only
 // and we can compute line/col position only if an error happens.
+#[allow(clippy::struct_excessive_bools)]
 pub struct SliceRead<'a> {
     slice: &'a [u8],
     /// Index of the *next* byte that will be returned by next() or peek().
@@ -371,6 +372,7 @@ impl<R> IoRead<R>
 where
     R: io::Read,
 {
+    #[allow(clippy::needless_pass_by_value)]
     fn parse_str_bytes<'s, T, S>(
         &'s mut self,
         scratch: &'s mut Vec<u8>,
@@ -579,7 +581,14 @@ where
 
 impl<'a> SliceRead<'a> {
     /// Create a JSON input source to read from a slice of bytes.
-    pub fn new(slice: &'a [u8], replace_invalid_characters: bool, allow_control_characters_in_string: bool, allow_v_escapes: bool, allow_x_escapes: bool) -> Self {
+    #[allow(clippy::fn_params_excessive_bools)]
+    pub fn new(
+        slice: &'a [u8],
+        replace_invalid_characters: bool,
+        allow_control_characters_in_string: bool,
+        allow_v_escapes: bool,
+        allow_x_escapes: bool,
+    ) -> Self {
         SliceRead {
             slice,
             index: 0,
@@ -592,7 +601,7 @@ impl<'a> SliceRead<'a> {
         }
     }
 
-    fn escapes(&self) -> [bool;256] {
+    fn escapes(&self) -> [bool; 256] {
         get_escapes(self.allow_control_characters_in_string)
     }
 
@@ -615,6 +624,7 @@ impl<'a> SliceRead<'a> {
     /// The big optimization here over IoRead is that if the string contains no
     /// backslash escape sequences, the returned &str is a slice of the raw JSON
     /// data so we avoid copying into the scratch space.
+    #[allow(clippy::needless_pass_by_value)]
     fn parse_str_bytes<'s, T, S>(
         &'s mut self,
         scratch: &'s mut Vec<u8>,
@@ -629,7 +639,8 @@ impl<'a> SliceRead<'a> {
         let mut start = self.index;
 
         loop {
-            while self.index < self.slice.len() && !self.escapes()[self.slice[self.index] as usize] {
+            while self.index < self.slice.len() && !self.escapes()[self.slice[self.index] as usize]
+            {
                 self.index += 1;
             }
             if self.index == self.slice.len() {
@@ -743,7 +754,8 @@ impl<'a> Read<'a> for SliceRead<'a> {
 
     fn ignore_str(&mut self) -> Result<()> {
         loop {
-            while self.index < self.slice.len() && !self.escapes()[self.slice[self.index] as usize] {
+            while self.index < self.slice.len() && !self.escapes()[self.slice[self.index] as usize]
+            {
                 self.index += 1;
             }
             if self.index == self.slice.len() {
@@ -1010,11 +1022,11 @@ const ESCAPE: [bool; 256] = get_escapes(false);
 // Lookup table of bytes that must be escaped. A value of true at index i means
 // that byte i requires an escape sequence in the input.
 const fn get_escapes(allow_control_characters_in_string: bool) -> [bool; 256] {
-    #[allow(non_snake_case)]
-    let CT: bool = !allow_control_characters_in_string; // control character \x00..=\x1F
     const QU: bool = true; // quote \x22
     const BS: bool = true; // backslash \x5C
     const __: bool = false; // allow unescaped
+    #[allow(non_snake_case)]
+    let CT: bool = !allow_control_characters_in_string; // control character \x00..=\x1F
     [
         //   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
         CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, // 0

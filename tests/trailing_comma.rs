@@ -120,13 +120,13 @@ fn test_commas_switchable() {
     {
         "key": "value",
     }"#;
-    let mut deserializer = Deserializer::from_str(&s);
+    let mut deserializer = Deserializer::from_str(s);
     deserializer.set_ignore_trailing_commas(false);
     assert!(Value::deserialize(&mut deserializer)
         .unwrap_err()
         .to_string()
         .contains("comma"));
-    let mut deserializer = Deserializer::from_str(&s);
+    let mut deserializer = Deserializer::from_str(s);
     let value = Value::deserialize(&mut deserializer).unwrap();
     assert_eq!(value, json!({ "key": "value" }));
 }
