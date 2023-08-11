@@ -119,7 +119,7 @@ impl Error {
     /// # Example
     ///
     /// ```
-    /// use serde_json::Value;
+    /// use serde_json_lenient::Value;
     /// use std::io::{self, ErrorKind, Read};
     /// use std::process;
     ///
@@ -138,7 +138,7 @@ impl Error {
     /// fn main() {
     ///     let reader = ReaderThatWillTimeOut(br#" {"k": "#);
     ///
-    ///     let _: Value = match serde_json::from_reader(reader) {
+    ///     let _: Value = match serde_json_lenient::from_reader(reader) {
     ///         Ok(value) => value,
     ///         Err(error) => {
     ///             if error.io_error_kind() == Some(ErrorKind::TimedOut) {
