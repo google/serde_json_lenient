@@ -1142,9 +1142,6 @@ fn parse_escape_or_fail<'de, R: Read<'de>>(
                         Ok(())
                     };
                 }
-                // Optionally, refuse to decode Unicode non-characters.
-                0xFDD0..=0xFDEF => '\u{fffd}',
-                n if (n & 0xFFFE == 0xFFFE || n == 0xFFFF) => '\u{fffd}',
 
                 // Non-BMP characters are encoded as a sequence of two hex
                 // escapes, representing UTF-16 surrogates. If deserializing a
@@ -1188,15 +1185,11 @@ fn parse_escape_or_fail<'de, R: Read<'de>>(
 
                     let n = (((n1 - 0xD800) as u32) << 10 | (n2 - 0xDC00) as u32) + 0x1_0000;
 
-                    match n {
-                        0xFDD0..=0xFDEF => '\u{fffd}',
-                        n if (n & 0xFFFE == 0xFFFE || n & 0xFFFF == 0xFFFF) => '\u{fffd}',
-                        _ => match char::from_u32(n) {
-                            Some(c) => c,
-                            None => {
-                                return error(read, ErrorCode::InvalidUnicodeCodePoint);
-                            }
-                        },
+                    match char::from_u32(n) {
+                        Some(c) => c,
+                        None => {
+                            return error(read, ErrorCode::InvalidUnicodeCodePoint);
+                        }
                     }
                 }
 
