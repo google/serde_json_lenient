@@ -1,5 +1,7 @@
 #![cfg(feature = "arbitrary_precision")]
 
+use serde_json_lenient as serde_json;
+
 #[test]
 fn test() {
     let float = 5.55f32;

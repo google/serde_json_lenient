@@ -245,7 +245,7 @@ impl From<Box<RawValue>> for Box<str> {
 ///
 /// // Local crate
 /// use serde::Serialize;
-/// use serde_json::value::{to_raw_value, RawValue};
+/// use serde_json_lenient::value::{to_raw_value, RawValue};
 ///
 /// #[derive(Serialize)]
 /// struct MyExtraData {
@@ -259,8 +259,8 @@ impl From<Box<RawValue>> for Box<str> {
 ///     extra_data: to_raw_value(&MyExtraData { a: 1, b: 2 }).unwrap(),
 /// };
 /// # assert_eq!(
-/// #     serde_json::to_value(my_thing).unwrap(),
-/// #     serde_json::json!({
+/// #     serde_json_lenient::to_value(my_thing).unwrap(),
+/// #     serde_json_lenient::json!({
 /// #         "foo": "FooVal",
 /// #         "bar": null,
 /// #         "extra_data": { "a": 1, "b": 2 }
@@ -280,7 +280,7 @@ impl From<Box<RawValue>> for Box<str> {
 /// let mut map = BTreeMap::new();
 /// map.insert(vec![32, 64], "x86");
 ///
-/// println!("{}", serde_json::value::to_raw_value(&map).unwrap_err());
+/// println!("{}", serde_json_lenient::value::to_raw_value(&map).unwrap_err());
 /// ```
 #[cfg_attr(docsrs, doc(cfg(feature = "raw_value")))]
 pub fn to_raw_value<T>(value: &T) -> Result<Box<RawValue>, Error>

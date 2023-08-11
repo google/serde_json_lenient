@@ -2326,7 +2326,9 @@ fn test_raw_invalid_utf8() {
 #[test]
 fn test_serialize_unsized_value_to_raw_value() {
     assert_eq!(
-        serde_json_lenient::value::to_raw_value("foobar").unwrap().get(),
+        serde_json_lenient::value::to_raw_value("foobar")
+            .unwrap()
+            .get(),
         r#""foobar""#,
     );
 }
