@@ -27,6 +27,7 @@ pub use crate::read::IoRead;
 //////////////////////////////////////////////////////////////////////////////
 
 /// A structure that deserializes JSON into Rust values.
+#[allow(clippy::struct_excessive_bools)]
 pub struct Deserializer<R> {
     read: R,
     scratch: Vec<u8>,
