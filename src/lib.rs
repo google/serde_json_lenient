@@ -324,18 +324,12 @@
     clippy::match_single_binding,
     clippy::needless_doctest_main,
     clippy::needless_late_init,
-    // clippy bug: https://github.com/rust-lang/rust-clippy/issues/8366
-    clippy::ptr_arg,
     clippy::return_self_not_must_use,
     clippy::transmute_ptr_to_ptr,
-    clippy::unnecessary_wraps,
-    // clippy bug: https://github.com/rust-lang/rust-clippy/issues/5704
-    clippy::unnested_or_patterns,
+    clippy::unnecessary_wraps
 )]
 // Ignored clippy_pedantic lints
 #![allow(
-    // buggy
-    clippy::iter_not_returning_iterator, // https://github.com/rust-lang/rust-clippy/issues/8285
     // Deserializer::from_str, into_iter
     clippy::should_implement_trait,
     // integer and float ser/de requires these sorts of casts
@@ -371,6 +365,8 @@
     clippy::missing_errors_doc,
     clippy::must_use_candidate,
 )]
+// Restrictions
+#![deny(clippy::question_mark_used)]
 #![allow(non_upper_case_globals)]
 #![deny(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
