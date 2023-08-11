@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
   schedule: [cron: "40 1 * * *"]
 
 permissions:
@@ -37,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: [beta, 1.56.1]
+        rust: [beta, 1.64.0, 1.56.1]
         os: [ubuntu]
         include:
           - rust: stable
@@ -52,21 +53,31 @@ jobs:
         with:
           toolchain: ${{matrix.rust}}
           targets: ${{matrix.target}}
-      - run: cargo check
-      - run: cargo check --features float_roundtrip
-      - run: cargo check --features arbitrary_precision
-      - run: cargo check --features raw_value
-      - run: cargo check --features unbounded_depth
+      - run: cargo check --manifest-path tests/crate/Cargo.toml
+      - run: cargo check --manifest-path tests/crate/Cargo.toml --features float_roundtrip
+      - run: cargo check --manifest-path tests/crate/Cargo.toml --features arbitrary_precision
+      - run: cargo check --manifest-path tests/crate/Cargo.toml --features raw_value
+      - run: cargo check --manifest-path tests/crate/Cargo.toml --features unbounded_depth
       - run: cargo check --manifest-path tests/crate/Cargo.toml --no-default-features --features alloc
       - run: cargo check --manifest-path tests/crate/Cargo.toml --no-default-features --features alloc,arbitrary_precision
       - run: cargo check --manifest-path tests/crate/Cargo.toml --no-default-features --features alloc,raw_value
-      - run: cargo check --features preserve_order
-        if: matrix.rust != '1.53.0' && matrix.rust != '1.46.0' && matrix.rust != '1.45.0' && matrix.rust != '1.40.0' && matrix.rust != '1.38.0' && matrix.rust != '1.36.0'
-      - run: cargo check --manifest-path tests/crate/Cargo.toml --no-default-features --features alloc,preserve_order
-        if: matrix.rust != '1.53.0' && matrix.rust != '1.46.0' && matrix.rust != '1.45.0' && matrix.rust != '1.40.0' && matrix.rust != '1.38.0' && matrix.rust != '1.36.0'
+      - run: cargo check --manifest-path tests/crate/Cargo.toml --features serde_json_lenient/preserve_order
+        if: matrix.rust != '1.56.1'
+      - run: cargo check --manifest-path tests/crate/Cargo.toml --no-default-features --features alloc,serde_json_lenient/preserve_order
+        if: matrix.rust != '1.56.1'
       - name: Build without std
         run: cargo check --manifest-path tests/crate/Cargo.toml --target ${{matrix.target}} --no-default-features --features alloc
         if: matrix.target
+
+  minimal:
+    name: Minimal versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo generate-lockfile -Z minimal-versions
+      - run: cargo check --locked
 
   miri:
     name: Miri
@@ -121,5 +132,5 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/install@cargo-outdated
-      - run: cargo outdated --workspace --exit-code 1
+      - run: cargo outdated --exit-code 1
       - run: cargo outdated --manifest-path fuzz/Cargo.toml --exit-code 1
