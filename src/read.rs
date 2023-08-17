@@ -1076,33 +1076,29 @@ where
     Err(Error::syntax(reason, position.line, position.column))
 }
 
+/// Parses a JSON escape sequence and appends it into the scratch space. Assumes
+/// the previous byte read was a backslash.
 fn parse_escape<'de, R: Read<'de>>(
     read: &mut R,
     validate: bool,
     scratch: &mut Vec<u8>,
 ) -> Result<()> {
-    let r = parse_escape_or_fail(read, validate, scratch);
-    if read.replace_invalid_unicode() {
-        match r {
-            Ok(a) => Ok(a),
-            Err(_) => {
-                scratch.extend("\u{fffd}".as_bytes());
-                Ok(())
-            }
-        }
-    } else {
-        r
-    }
-}
-
-/// Parses a JSON escape sequence and appends it into the scratch space. Assumes
-/// the previous byte read was a backslash.
-fn parse_escape_or_fail<'de, R: Read<'de>>(
-    read: &mut R,
-    validate: bool,
-    scratch: &mut Vec<u8>,
-) -> Result<()> {
     let ch = tri!(next_or_eof(read));
+
+    // In the event of an error, if replacing invalid unicode, just return REPLACEMENT CHARACTER.
+    // Otherwise, discard the peeked byte representing the error if necessary and fall back to
+    // error().
+    let mut error_or_replace = |read: &mut R, need_discard, reason| {
+        if read.replace_invalid_unicode() {
+            scratch.extend("\u{fffd}".as_bytes());
+            Ok(())
+        } else {
+            if need_discard {
+                read.discard();
+            }
+            error(read, reason)
+        }
+    };
 
     match ch {
         b'"' => scratch.push(b'"'),
@@ -1119,7 +1115,7 @@ fn parse_escape_or_fail<'de, R: Read<'de>>(
             let c = match char::from_u32(c) {
                 Some(c) => c,
                 None => {
-                    return error(read, ErrorCode::InvalidUnicodeCodePoint);
+                    return error_or_replace(read, false, ErrorCode::InvalidUnicodeCodePoint);
                 }
             };
             scratch.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
@@ -1136,7 +1132,7 @@ fn parse_escape_or_fail<'de, R: Read<'de>>(
             let c = match tri!(read.decode_hex_escape(4)) {
                 n @ 0xDC00..=0xDFFF => {
                     return if validate {
-                        error(read, ErrorCode::LoneLeadingSurrogateInHexEscape)
+                        error_or_replace(read, false, ErrorCode::LoneLeadingSurrogateInHexEscape)
                     } else {
                         encode_surrogate(scratch, n);
                         Ok(())
@@ -1152,8 +1148,7 @@ fn parse_escape_or_fail<'de, R: Read<'de>>(
                         read.discard();
                     } else {
                         return if validate {
-                            read.discard();
-                            error(read, ErrorCode::UnexpectedEndOfHexEscape)
+                            error_or_replace(read, true, ErrorCode::UnexpectedEndOfHexEscape)
                         } else {
                             encode_surrogate(scratch, n1);
                             Ok(())
@@ -1164,8 +1159,7 @@ fn parse_escape_or_fail<'de, R: Read<'de>>(
                         read.discard();
                     } else {
                         return if validate {
-                            read.discard();
-                            error(read, ErrorCode::UnexpectedEndOfHexEscape)
+                            error_or_replace(read, true, ErrorCode::UnexpectedEndOfHexEscape)
                         } else {
                             encode_surrogate(scratch, n1);
                             // The \ prior to this byte started an escape sequence,
@@ -1180,7 +1174,7 @@ fn parse_escape_or_fail<'de, R: Read<'de>>(
                     let n2 = tri!(read.decode_hex_escape(4));
 
                     if n2 < 0xDC00 || n2 > 0xDFFF {
-                        return error(read, ErrorCode::LoneLeadingSurrogateInHexEscape);
+                        return error_or_replace(read, false, ErrorCode::LoneLeadingSurrogateInHexEscape);
                     }
 
                     let n = (((n1 - 0xD800) as u32) << 10 | (n2 - 0xDC00) as u32) + 0x1_0000;
@@ -1188,7 +1182,7 @@ fn parse_escape_or_fail<'de, R: Read<'de>>(
                     match char::from_u32(n) {
                         Some(c) => c,
                         None => {
-                            return error(read, ErrorCode::InvalidUnicodeCodePoint);
+                            return error_or_replace(read, false, ErrorCode::InvalidUnicodeCodePoint);
                         }
                     }
                 }
