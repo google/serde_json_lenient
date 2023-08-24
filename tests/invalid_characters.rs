@@ -25,8 +25,15 @@ fn test_invalid_characters() {
 }
 
 #[test]
-fn test_invalid_utf16_escape_sequence() {
-    let s = "{\"key\": \"value\\udfff\"}".as_bytes();
+fn test_invalid_utf16_escape_sequence_lone_low_surrogate() {
+    let s = "{\"key\": \"value=\\udfff_\"}".as_bytes();
     let value: Value = from_slice_with_unicode_substitution(s).unwrap();
-    assert_eq!(value, json!({"key": "value\u{fffd}"}));
+    assert_eq!(value, json!({"key": "value=\u{fffd}_"}));
+}
+
+#[test]
+fn test_invalid_utf16_escape_sequence_lone_high_surrogate() {
+    let s = "{\"key\": \"value=\\ud800_\"}".as_bytes();
+    let value: Value = from_slice_with_unicode_substitution(s).unwrap();
+    assert_eq!(value, json!({"key": "value=\u{fffd}_"}));
 }
