@@ -1019,7 +1019,6 @@ pub trait Fused: private::Sealed {}
 impl<'a> Fused for SliceRead<'a> {}
 impl<'a> Fused for StrRead<'a> {}
 
-#[cfg(feature = "std")]
 const ESCAPE: [bool; 256] = get_escapes(false);
 const NO_ESCAPE: [bool; 256] = get_escapes(true);
 
