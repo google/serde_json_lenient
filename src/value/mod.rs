@@ -518,7 +518,7 @@ impl Value {
     /// None otherwise.
     ///
     /// ```
-    /// # use serde_json::{json, Number};
+    /// # use serde_json_lenient::{json, Number};
     /// #
     /// let v = json!({ "a": 1, "b": 2.2, "c": -3, "d": "4" });
     ///
