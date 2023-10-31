@@ -160,16 +160,28 @@ fn test_write_f64() {
 
 #[test]
 fn test_encode_nonfinite_float_yields_null() {
-    let v = to_value(::std::f64::NAN).unwrap();
+    let v = to_value(::std::f64::NAN.copysign(1.0)).unwrap();
+    assert!(v.is_null());
+
+    let v = to_value(::std::f64::NAN.copysign(-1.0)).unwrap();
     assert!(v.is_null());
 
     let v = to_value(::std::f64::INFINITY).unwrap();
     assert!(v.is_null());
 
-    let v = to_value(::std::f32::NAN).unwrap();
+    let v = to_value(-::std::f64::INFINITY).unwrap();
+    assert!(v.is_null());
+
+    let v = to_value(::std::f32::NAN.copysign(1.0)).unwrap();
+    assert!(v.is_null());
+
+    let v = to_value(::std::f32::NAN.copysign(-1.0)).unwrap();
     assert!(v.is_null());
 
     let v = to_value(::std::f32::INFINITY).unwrap();
+    assert!(v.is_null());
+
+    let v = to_value(-::std::f32::INFINITY).unwrap();
     assert!(v.is_null());
 }
 
@@ -1642,17 +1654,6 @@ fn test_deserialize_from_stream() {
 }
 
 #[test]
-fn test_serialize_rejects_bool_keys() {
-    let map = treemap!(
-        true => 2,
-        false => 4,
-    );
-
-    let err = to_vec(&map).unwrap_err();
-    assert_eq!(err.to_string(), "key must be a string");
-}
-
-#[test]
 fn test_serialize_rejects_adt_keys() {
     let map = treemap!(
         Some("a") => 2,
@@ -2003,6 +2004,14 @@ fn test_deny_non_finite_f64_key() {
     let map = treemap!(F64Bits(f64::NAN.to_bits()) => "x".to_owned());
     assert!(serde_json_lenient::to_string(&map).is_err());
     assert!(serde_json_lenient::to_value(map).is_err());
+}
+
+#[test]
+fn test_boolean_key() {
+    let map = treemap!(false => 0, true => 1);
+    let j = r#"{"false":0,"true":1}"#;
+    test_encode_ok(&[(&map, j)]);
+    test_parse_ok(vec![(j, map)]);
 }
 
 #[test]
