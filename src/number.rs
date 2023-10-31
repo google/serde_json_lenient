@@ -287,7 +287,7 @@ impl Number {
     /// number.
     ///
     /// ```
-    /// # use serde_json::Number;
+    /// # use serde_json_lenient::Number;
     /// for value in [
     ///     "7",
     ///     "12.34",
@@ -296,7 +296,7 @@ impl Number {
     ///     "343412345678910111213141516171819202122232425262728293034",
     ///     "-343412345678910111213141516171819202122232425262728293031",
     /// ] {
-    ///     let number: Number = serde_json::from_str(value).unwrap();
+    ///     let number: Number = serde_json_lenient::from_str(value).unwrap();
     ///     assert_eq!(number.as_str(), value);
     /// }
     /// ```
