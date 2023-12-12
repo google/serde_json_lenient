@@ -829,9 +829,16 @@ fn test_parse_u64() {
     ]);
 }
 
+#[cfg(feature = "parse_negative_zero_as_int")]
+#[test]
+fn test_parse_negative_zero_as_int() {
+    test_parse_ok(vec![("-0", 0)]);
+}
+
 #[test]
 fn test_parse_negative_zero() {
     for negative_zero in &[
+        #[cfg(not(feature = "parse_negative_zero_as_int"))]
         "-0",
         "-0.0",
         "-0e2",
@@ -1890,13 +1897,13 @@ fn test_integer_key() {
         (r#"{"123 ":null}"#, "expected `\"` at line 1 column 6"),
     ]);
 
-    let err = from_value::<BTreeMap<i32, ()>>(json!({" 123":null})).unwrap_err();
+    let err = from_value::<BTreeMap<i32, ()>>(json!({ " 123": null })).unwrap_err();
     assert_eq!(
         err.to_string(),
         "invalid value: expected key to be a number in quotes",
     );
 
-    let err = from_value::<BTreeMap<i32, ()>>(json!({"123 ":null})).unwrap_err();
+    let err = from_value::<BTreeMap<i32, ()>>(json!({ "123 ": null })).unwrap_err();
     assert_eq!(
         err.to_string(),
         "invalid value: expected key to be a number in quotes",
