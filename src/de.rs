@@ -613,8 +613,15 @@ impl<'de, R: Read<'de>> Deserializer<R> {
                 } else {
                     let neg = (significand as i64).wrapping_neg();
 
-                    // Convert into a float if we underflow, or on `-0`.
-                    if neg >= 0 {
+                    // If we have -0 and cfg parse_negative_zero_as_int is true, then we handle -0
+                    // as an i64 (0). Otherwise, -0 becomes an f64 (-0.0).
+                    let parse_as_float = if cfg!(feature = "parse_negative_zero_as_int") {
+                        neg > 0
+                    } else {
+                        neg >= 0
+                    };
+
+                    if parse_as_float {
                         ParserNumber::F64(-(significand as f64))
                     } else {
                         ParserNumber::I64(neg)

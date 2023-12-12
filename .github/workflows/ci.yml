@@ -31,6 +31,7 @@ jobs:
       - run: cargo test --features float_roundtrip,arbitrary_precision --tests -- --skip ui --exact
       - run: cargo test --features raw_value --tests -- --skip ui --exact
       - run: cargo test --features unbounded_depth --tests -- --skip ui --exact
+      - run: cargo test --features parse_negative_zero_as_int --tests -- --skip ui --exact
 
   build:
     name: Rust ${{matrix.rust}} ${{matrix.os == 'windows' && '(windows)' || ''}}

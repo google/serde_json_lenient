@@ -829,9 +829,16 @@ fn test_parse_u64() {
     ]);
 }
 
+#[cfg(feature = "parse_negative_zero_as_int")]
+#[test]
+fn test_parse_negative_zero_as_int() {
+    test_parse_ok(vec![("-0", 0)]);
+}
+
 #[test]
 fn test_parse_negative_zero() {
     for negative_zero in &[
+        #[cfg(not(feature = "parse_negative_zero_as_int"))]
         "-0",
         "-0.0",
         "-0e2",

@@ -93,3 +93,8 @@ raw_value = []
 # overflow the stack after deserialization has completed, including, but not
 # limited to, Display and Debug and Drop impls.
 unbounded_depth = []
+
+# Parse -0 as an integer, meant primarily for compatibility with existing JSON
+# parsers. Serde traditionally parses -0 as a "real", and will produce -0.0.
+# With this flag, it is parsed as an int, and becomes 0.
+parse_negative_zero_as_int = []
