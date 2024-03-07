@@ -325,6 +325,7 @@ pub struct SliceRead<'a> {
     /// Index of the *next* byte that will be returned by next() or peek().
     index: usize,
     replace_invalid_characters: bool,
+    allow_newlines_in_string: bool,
     allow_control_characters_in_string: bool,
     allow_x_escapes: bool,
     allow_v_escapes: bool,
@@ -385,7 +386,7 @@ where
     {
         loop {
             let ch = tri!(next_or_eof(self));
-            if !ESCAPE[ch as usize] {
+            if !ESCAPE_ALL[ch as usize] {
                 scratch.push(ch);
                 continue;
             }
@@ -518,7 +519,7 @@ where
     fn ignore_str(&mut self) -> Result<()> {
         loop {
             let ch = tri!(next_or_eof(self));
-            if !ESCAPE[ch as usize] {
+            if !ESCAPE_ALL[ch as usize] {
                 continue;
             }
             match ch {
@@ -581,10 +582,19 @@ where
 
 impl<'a> SliceRead<'a> {
     /// Create a JSON input source to read from a slice of bytes.
+    ///
+    /// The options are as follows:
+    /// - `replace_invalid_characters` - replace invalid characters with U+FFFD.
+    /// - `allow_newlines_in_string` - allow CR and LF characters in strings.
+    /// - `allow_control_characters_in_string` - allow control characters other than CR/LF in
+    ///    strings.
+    /// - `allow_v_escapes` - allow `\v` in strings.
+    /// - `allow_x_escapes` - allow `\x##` in strings.
     #[allow(clippy::fn_params_excessive_bools)]
     pub fn new(
         slice: &'a [u8],
         replace_invalid_characters: bool,
+        allow_newlines_in_string: bool,
         allow_control_characters_in_string: bool,
         allow_v_escapes: bool,
         allow_x_escapes: bool,
@@ -593,6 +603,7 @@ impl<'a> SliceRead<'a> {
             slice,
             index: 0,
             replace_invalid_characters,
+            allow_newlines_in_string,
             allow_control_characters_in_string,
             allow_v_escapes,
             allow_x_escapes,
@@ -601,11 +612,17 @@ impl<'a> SliceRead<'a> {
         }
     }
 
+    /// Find the appropriate escaping table for the current set of options.
     fn escapes(&self) -> &[bool; 256] {
-        if self.allow_control_characters_in_string {
-            return &NO_ESCAPE;
+        match (
+            self.allow_newlines_in_string,
+            self.allow_control_characters_in_string,
+        ) {
+            (false, false) => &ESCAPE_ALL,
+            (true, false) => &ESCAPE_NL_OK,
+            (false, true) => &ESCAPE_CONTROL_OK,
+            (true, true) => &ESCAPE_CONTROL_NL_OK,
         }
-        &ESCAPE
     }
 
     fn position_of_index(&self, i: usize) -> Position {
@@ -835,7 +852,7 @@ impl<'a> StrRead<'a> {
     /// Create a JSON input source to read from a UTF-8 string.
     pub fn new(s: &'a str) -> Self {
         StrRead {
-            delegate: SliceRead::new(s.as_bytes(), false, false, false, false),
+            delegate: SliceRead::new(s.as_bytes(), false, false, false, false, false),
             #[cfg(feature = "raw_value")]
             data: s,
         }
@@ -1019,20 +1036,26 @@ pub trait Fused: private::Sealed {}
 impl<'a> Fused for SliceRead<'a> {}
 impl<'a> Fused for StrRead<'a> {}
 
-const ESCAPE: [bool; 256] = get_escapes(false);
-const NO_ESCAPE: [bool; 256] = get_escapes(true);
+const ESCAPE_ALL: [bool; 256] = get_escapes(false, false);
+const ESCAPE_CONTROL_OK: [bool; 256] = get_escapes(false, true);
+const ESCAPE_NL_OK: [bool; 256] = get_escapes(true, false);
+const ESCAPE_CONTROL_NL_OK: [bool; 256] = get_escapes(true, true);
 
 // Lookup table of bytes that must be escaped. A value of true at index i means
 // that byte i requires an escape sequence in the input.
-const fn get_escapes(allow_control_characters_in_string: bool) -> [bool; 256] {
+const fn get_escapes(
+    allow_newlines_in_string: bool,
+    allow_control_characters_in_string: bool,
+) -> [bool; 256] {
+    #![allow(non_snake_case)]
     const QU: bool = true; // quote \x22
     const BS: bool = true; // backslash \x5C
     const __: bool = false; // allow unescaped
-    #[allow(non_snake_case)]
-    let CT: bool = !allow_control_characters_in_string; // control character \x00..=\x1F
+    let NL: bool = !allow_newlines_in_string; // CR / LF
+    let CT: bool = !allow_control_characters_in_string; // other control character \x00..=\x1F
     [
         //   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
-        CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, // 0
+        CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, NL, CT, NL, CT, CT, // 0
         CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, CT, // 1
         __, __, QU, __, __, __, __, __, __, __, __, __, __, __, __, __, // 2
         __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, __, // 3
@@ -1177,7 +1200,11 @@ fn parse_escape<'de, R: Read<'de>>(
                     let n2 = tri!(read.decode_hex_escape(4));
 
                     if n2 < 0xDC00 || n2 > 0xDFFF {
-                        return error_or_replace(read, false, ErrorCode::LoneLeadingSurrogateInHexEscape);
+                        return error_or_replace(
+                            read,
+                            false,
+                            ErrorCode::LoneLeadingSurrogateInHexEscape,
+                        );
                     }
 
                     let n = (((n1 - 0xD800) as u32) << 10 | (n2 - 0xDC00) as u32) + 0x1_0000;
@@ -1185,7 +1212,11 @@ fn parse_escape<'de, R: Read<'de>>(
                     match char::from_u32(n) {
                         Some(c) => c,
                         None => {
-                            return error_or_replace(read, false, ErrorCode::InvalidUnicodeCodePoint);
+                            return error_or_replace(
+                                read,
+                                false,
+                                ErrorCode::InvalidUnicodeCodePoint,
+                            );
                         }
                     }
                 }
