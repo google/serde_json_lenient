@@ -308,7 +308,7 @@
 //! [macro]: crate::json
 //! [`serde-json-core`]: https://github.com/rust-embedded-community/serde-json-core
 
-#![doc(html_root_url = "https://docs.rs/serde_json_lenient/0.1.8")]
+#![doc(html_root_url = "https://docs.rs/serde_json_lenient/0.1.9")]
 // Ignored clippy lints
 #![allow(
     clippy::collapsible_else_if,
@@ -369,10 +369,13 @@
 #![deny(clippy::question_mark_used)]
 #![allow(non_upper_case_globals)]
 #![deny(missing_docs)]
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 extern crate alloc;
+
+#[cfg(feature = "std")]
+extern crate std;
 
 #[cfg(feature = "std")]
 #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
