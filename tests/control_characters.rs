@@ -35,45 +35,42 @@ fn test_control_character_lenient() {
 
 #[test]
 fn test_not_newlines_not_control() {
-    let test_options = TestOptions {
+    let opts = TestOptions {
         allow_newlines_in_string: false,
         allow_control_characters_in_string: false,
     };
-    assert_eq!(test_options.deserialize(b"\"abc\"").unwrap(), json!("abc"));
-    assert!(test_options.deserialize(b"\"a\nb\x10c\"").is_err());
-    assert!(test_options.deserialize(b"\"a\nb\rc\"").is_err());
-    assert!(test_options.deserialize(b"\"a\x08b\x1fc\"").is_err());
+    assert_eq!(opts.deserialize(b"\"abc\"").unwrap(), json!("abc"));
+    assert!(opts.deserialize(b"\"a\nb\"").is_err());
+    assert!(opts.deserialize(b"\"a\rb\"").is_err());
+    assert!(opts.deserialize(b"\"a\x10b\"").is_err());
+    assert!(opts.deserialize(b"\"a\x08b\x1fc\"").is_err());
 }
 
 #[test]
 fn test_newlines_and_control() {
-    let test_options = TestOptions {
+    let opts = TestOptions {
         allow_newlines_in_string: true,
         allow_control_characters_in_string: true,
     };
-    assert_eq!(test_options.deserialize(b"\"abc\"").unwrap(), json!("abc"));
+    assert_eq!(opts.deserialize(b"\"abc\"").unwrap(), json!("abc"));
+    assert_eq!(opts.deserialize(b"\"a\nb\"").unwrap(), json!("a\nb"));
+    assert_eq!(opts.deserialize(b"\"a\rb\"").unwrap(), json!("a\rb"));
+    assert_eq!(opts.deserialize(b"\"a\x10b\"").unwrap(), json!("a\x10b"));
     assert_eq!(
-        test_options.deserialize(b"\"a\nb\x10c\"").unwrap(),
-        json!("a\nb\x10c")
-    );
-    assert_eq!(
-        test_options.deserialize(b"\"a\nb\rc\"").unwrap(),
-        json!("a\nb\rc")
-    );
-    assert_eq!(
-        test_options.deserialize(b"\"a\x08b\x1fc\"").unwrap(),
+        opts.deserialize(b"\"a\x08b\x1fc\"").unwrap(),
         json!("a\x08b\x1fc")
     );
 }
 
 #[test]
 fn test_newlines_but_not_control() {
-    let test_options = TestOptions {
+    let opts = TestOptions {
         allow_newlines_in_string: true,
         allow_control_characters_in_string: false,
     };
-    assert_eq!(test_options.deserialize(b"\"abc\"").unwrap(), json!("abc"));
-    assert!(test_options.deserialize(b"\"a\nb\x10c\"").is_err());
-    assert!(test_options.deserialize(b"\"a\nb\rc\"").is_err());
-    assert!(test_options.deserialize(b"\"a\x08b\x1fc\"").is_err());
+    assert_eq!(opts.deserialize(b"\"abc\"").unwrap(), json!("abc"));
+    assert_eq!(opts.deserialize(b"\"a\nb\"").unwrap(), json!("a\nb"));
+    assert_eq!(opts.deserialize(b"\"a\rb\"").unwrap(), json!("a\rb"));
+    assert!(opts.deserialize(b"\"a\x10b\"").is_err());
+    assert!(opts.deserialize(b"\"a\x08b\x1fc\"").is_err());
 }
