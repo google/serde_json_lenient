@@ -372,6 +372,11 @@
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+#[cfg(not(any(feature = "std", feature = "alloc")))]
+compile_error! {
+    "serde_json requires that either `std` (default) or `alloc` feature is enabled"
+}
+
 extern crate alloc;
 
 #[cfg(feature = "std")]
@@ -417,8 +422,6 @@ pub mod ser;
 #[cfg(not(feature = "std"))]
 mod ser;
 pub mod value;
-
-mod features_check;
 
 mod io;
 #[cfg(feature = "std")]
