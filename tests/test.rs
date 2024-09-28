@@ -1779,7 +1779,7 @@ fn test_raw_de_invalid_surrogates() {
 #[cfg(feature = "raw_value")]
 #[test]
 fn test_raw_de_surrogate_pair() {
-    use serde_json::value::RawValue;
+    use serde_json_lenient::value::RawValue;
 
     assert!(from_str::<Box<RawValue>>(r#""\ud83c\udc00""#).is_ok());
 }
