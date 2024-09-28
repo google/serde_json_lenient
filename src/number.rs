@@ -692,7 +692,7 @@ impl From<ParserNumber> for Number {
                 }
                 #[cfg(feature = "arbitrary_precision")]
                 {
-                    f.to_string()
+                    ryu::Buffer::new().format_finite(f).to_owned()
                 }
             }
             ParserNumber::U64(u) => {
@@ -702,7 +702,7 @@ impl From<ParserNumber> for Number {
                 }
                 #[cfg(feature = "arbitrary_precision")]
                 {
-                    u.to_string()
+                    itoa::Buffer::new().format(u).to_owned()
                 }
             }
             ParserNumber::I64(i) => {
@@ -712,7 +712,7 @@ impl From<ParserNumber> for Number {
                 }
                 #[cfg(feature = "arbitrary_precision")]
                 {
-                    i.to_string()
+                    itoa::Buffer::new().format(i).to_owned()
                 }
             }
             #[cfg(feature = "arbitrary_precision")]
