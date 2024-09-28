@@ -1117,17 +1117,10 @@ fn is_escape(ch: u8, including_control_characters: bool, including_newlines: boo
     if ch == b'"' || ch == b'\\' {
         return true;
     }
-    if ch == b'\n' || ch == b'\r' {
-        if !including_newlines {
-            return false;
-        }
+    if (ch == b'\n' || ch == b'\r') && !including_newlines {
+        return false;
     }
-    if ch < 0x20 {
-        if including_control_characters {
-            return true;
-        }
-    }
-    return false;
+    ch < 0x20 && including_control_characters
 }
 
 fn next_or_eof<'de, R>(read: &mut R) -> Result<u8>
