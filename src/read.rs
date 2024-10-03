@@ -154,7 +154,6 @@ where
 
 /// Trait used by parse_str_bytes to convert the resulting bytes
 /// into a string-like thing. Depending on the original caller, this may
-
 /// be a &str or a &[u8].
 trait UtfOutputStrategy<T: ?Sized> {
     fn to_result_simple<'de, 's, R: Read<'de>>(&self, read: &R, slice: &'s [u8]) -> Result<&'s T>;
