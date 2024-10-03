@@ -308,7 +308,7 @@
 //! [macro]: crate::json
 //! [`serde-json-core`]: https://github.com/rust-embedded-community/serde-json-core
 
-#![doc(html_root_url = "https://docs.rs/serde_json_lenient/0.2.1")]
+#![doc(html_root_url = "https://docs.rs/serde_json_lenient/0.2.2")]
 // Ignored clippy lints
 #![allow(
     clippy::collapsible_else_if,
@@ -349,6 +349,7 @@
     clippy::wildcard_imports,
     // things are often more readable this way
     clippy::cast_lossless,
+    clippy::items_after_statements,
     clippy::module_name_repetitions,
     clippy::redundant_else,
     clippy::shadow_unrelated,
