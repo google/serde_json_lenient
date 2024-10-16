@@ -1491,7 +1491,7 @@ macro_rules! check_recursion {
     };
 }
 
-impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {
+impl<'de, R: Read<'de>> de::Deserializer<'de> for &mut Deserializer<R> {
     type Error = Error;
 
     #[inline]
