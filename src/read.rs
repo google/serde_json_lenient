@@ -1231,9 +1231,7 @@ fn parse_unicode_escape<'de, R: Read<'de>>(
         // n is a leading surrogate, we now expect a trailing surrogate.
         let n1 = n;
 
-        if tri!(peek_or_eof(read)) == b'\\' {
-            read.discard();
-        } else {
+        if tri!(peek_or_eof(read)) != b'\\' {
             return if validate {
                 error_or_replace(read, scratch, true, ErrorCode::UnexpectedEndOfHexEscape)
             } else {
@@ -1241,21 +1239,24 @@ fn parse_unicode_escape<'de, R: Read<'de>>(
                 Ok(())
             };
         }
+        // Read past the `\` and expect `u`.
+        read.discard();
 
-        if tri!(peek_or_eof(read)) == b'u' {
-            read.discard();
-        } else {
+        if tri!(peek_or_eof(read)) != b'u' {
             return if validate {
                 error_or_replace(read, scratch, true, ErrorCode::UnexpectedEndOfHexEscape)
             } else {
                 push_wtf8_codepoint(n1 as u32, scratch);
-                // The \ prior to this byte started an escape sequence, so we
-                // need to parse that now. This recursive call does not blow the
-                // stack on malicious input because the escape is not \u, so it
-                // will be handled by one of the easy nonrecursive cases.
-                parse_escape(read, validate, scratch)
-            };
+                Ok(())
+            }
+            // The \ prior to this byte started an escape sequence, so if there was no error then
+            // we need to parse that escape. This recursive call does not blow the stack on
+            // malicious input because the escape is not \u, so it will be handled by one of
+            // the easy nonrecursive cases.
+            .and_then(|()| parse_escape(read, validate, scratch));
         }
+        // Read past the `u` and expect a hex escape.
+        read.discard();
 
         let n2 = tri!(read.decode_hex_escape());
 

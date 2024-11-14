@@ -37,3 +37,17 @@ fn test_invalid_utf16_escape_sequence_lone_high_surrogate() {
     let value: Value = from_slice_with_unicode_substitution(s).unwrap();
     assert_eq!(value, json!({"key": "value=\u{fffd}_"}));
 }
+
+#[test]
+fn test_invalid_utf16_escape_sequence_lone_low_surrogate_precedes_escape() {
+    let s = "{\"key\": \"value=\\udfff\\\"x\"}".as_bytes();
+    let value: Value = from_slice_with_unicode_substitution(s).unwrap();
+    assert_eq!(value, json!({"key": "value=\u{fffd}\"x"}));
+}
+
+#[test]
+fn test_invalid_utf16_escape_sequence_lone_high_surrogate_precedes_escape() {
+    let s = "{\"key\": \"value=\\ud800\\\"x\"}".as_bytes();
+    let value: Value = from_slice_with_unicode_substitution(s).unwrap();
+    assert_eq!(value, json!({"key": "value=\u{fffd}\"x"}));
+}
