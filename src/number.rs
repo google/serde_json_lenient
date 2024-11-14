@@ -260,7 +260,6 @@ impl Number {
     ///
     /// assert!(Number::from_f64(f64::NAN).is_none());
     /// ```
-    #[inline]
     pub fn from_f64(f: f64) -> Option<Number> {
         if f.is_finite() {
             let n = {
@@ -277,6 +276,87 @@ impl Number {
         } else {
             None
         }
+    }
+
+    /// If the `Number` is an integer, represent it as i128 if possible. Returns
+    /// None otherwise.
+    pub fn as_i128(&self) -> Option<i128> {
+        #[cfg(not(feature = "arbitrary_precision"))]
+        match self.n {
+            N::PosInt(n) => Some(n as i128),
+            N::NegInt(n) => Some(n as i128),
+            N::Float(_) => None,
+        }
+        #[cfg(feature = "arbitrary_precision")]
+        self.n.parse().ok()
+    }
+
+    /// If the `Number` is an integer, represent it as u128 if possible. Returns
+    /// None otherwise.
+    pub fn as_u128(&self) -> Option<u128> {
+        #[cfg(not(feature = "arbitrary_precision"))]
+        match self.n {
+            N::PosInt(n) => Some(n as u128),
+            N::NegInt(_) | N::Float(_) => None,
+        }
+        #[cfg(feature = "arbitrary_precision")]
+        self.n.parse().ok()
+    }
+
+    /// Converts an `i128` to a `Number`. Numbers smaller than i64::MIN or
+    /// larger than u64::MAX can only be represented in `Number` if serde_json_lenient's
+    /// "arbitrary_precision" feature is enabled.
+    ///
+    /// ```
+    /// # use serde_json_lenient::Number;
+    /// #
+    /// assert!(Number::from_i128(256).is_some());
+    /// ```
+    pub fn from_i128(i: i128) -> Option<Number> {
+        let n = {
+            #[cfg(not(feature = "arbitrary_precision"))]
+            {
+                if let Ok(u) = u64::try_from(i) {
+                    N::PosInt(u)
+                } else if let Ok(i) = i64::try_from(i) {
+                    N::NegInt(i)
+                } else {
+                    return None;
+                }
+            }
+            #[cfg(feature = "arbitrary_precision")]
+            {
+                i.to_string()
+            }
+        };
+        Some(Number { n })
+    }
+
+    /// Converts a `u128` to a `Number`. Numbers greater than u64::MAX can only
+    /// be represented in `Number` if serde_json_lenient's "arbitrary_precision" feature
+    /// is enabled.
+    ///
+    /// ```
+    /// # use serde_json_lenient::Number;
+    /// #
+    /// assert!(Number::from_u128(256).is_some());
+    /// ```
+    pub fn from_u128(i: u128) -> Option<Number> {
+        let n = {
+            #[cfg(not(feature = "arbitrary_precision"))]
+            {
+                if let Ok(u) = u64::try_from(i) {
+                    N::PosInt(u)
+                } else {
+                    return None;
+                }
+            }
+            #[cfg(feature = "arbitrary_precision")]
+            {
+                i.to_string()
+            }
+        };
+        Some(Number { n })
     }
 
     /// Returns the exact original JSON representation that this Number was
@@ -368,7 +448,6 @@ impl Debug for Number {
 
 impl Serialize for Number {
     #[cfg(not(feature = "arbitrary_precision"))]
-    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -381,7 +460,6 @@ impl Serialize for Number {
     }
 
     #[cfg(feature = "arbitrary_precision")]
-    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -409,17 +487,30 @@ impl<'de> Deserialize<'de> for Number {
                 formatter.write_str("a JSON number")
             }
 
-            #[inline]
             fn visit_i64<E>(self, value: i64) -> Result<Number, E> {
                 Ok(value.into())
             }
 
-            #[inline]
+            fn visit_i128<E>(self, value: i128) -> Result<Number, E>
+            where
+                E: de::Error,
+            {
+                Number::from_i128(value)
+                    .ok_or_else(|| de::Error::custom("JSON number out of range"))
+            }
+
             fn visit_u64<E>(self, value: u64) -> Result<Number, E> {
                 Ok(value.into())
             }
 
-            #[inline]
+            fn visit_u128<E>(self, value: u128) -> Result<Number, E>
+            where
+                E: de::Error,
+            {
+                Number::from_u128(value)
+                    .ok_or_else(|| de::Error::custom("JSON number out of range"))
+            }
+
             fn visit_f64<E>(self, value: f64) -> Result<Number, E>
             where
                 E: de::Error,
@@ -428,7 +519,6 @@ impl<'de> Deserialize<'de> for Number {
             }
 
             #[cfg(feature = "arbitrary_precision")]
-            #[inline]
             fn visit_map<V>(self, mut visitor: V) -> Result<Number, V::Error>
             where
                 V: de::MapAccess<'de>,
@@ -522,7 +612,6 @@ fn invalid_number() -> Error {
 macro_rules! deserialize_any {
     (@expand [$($num_string:tt)*]) => {
         #[cfg(not(feature = "arbitrary_precision"))]
-        #[inline]
         fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Error>
         where
             V: Visitor<'de>,
@@ -535,7 +624,6 @@ macro_rules! deserialize_any {
         }
 
         #[cfg(feature = "arbitrary_precision")]
-        #[inline]
         fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Error>
             where V: Visitor<'de>
         {
@@ -543,6 +631,10 @@ macro_rules! deserialize_any {
                 return visitor.visit_u64(u);
             } else if let Some(i) = self.as_i64() {
                 return visitor.visit_i64(i);
+            } else if let Some(u) = self.as_u128() {
+                return visitor.visit_u128(u);
+            } else if let Some(i) = self.as_i128() {
+                return visitor.visit_i128(i);
             } else if let Some(f) = self.as_f64() {
                 if ryu::Buffer::new().format_finite(f) == self.n || f.to_string() == self.n {
                     return visitor.visit_f64(f);
@@ -728,7 +820,6 @@ macro_rules! impl_from_unsigned {
     ) => {
         $(
             impl From<$ty> for Number {
-                #[inline]
                 fn from(u: $ty) -> Self {
                     let n = {
                         #[cfg(not(feature = "arbitrary_precision"))]
@@ -751,7 +842,6 @@ macro_rules! impl_from_signed {
     ) => {
         $(
             impl From<$ty> for Number {
-                #[inline]
                 fn from(i: $ty) -> Self {
                     let n = {
                         #[cfg(not(feature = "arbitrary_precision"))]
