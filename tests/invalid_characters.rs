@@ -51,3 +51,10 @@ fn test_invalid_utf16_escape_sequence_lone_high_surrogate_precedes_escape() {
     let value: Value = from_slice_with_unicode_substitution(s).unwrap();
     assert_eq!(value, json!({"key": "value=\u{fffd}\"x"}));
 }
+
+#[test]
+fn test_lone_leading_surrogate_in_hex_escape_replaced() {
+    let s = r#"{"key": "\udbcb\u001e"}"#.as_bytes();
+    let value: Value = from_slice_with_unicode_substitution(s).unwrap();
+    assert_eq!(value, json!({"key": "\u{fffd}"}));
+}

@@ -1262,7 +1262,7 @@ fn parse_unicode_escape<'de, R: Read<'de>>(
 
         if n2 < 0xDC00 || n2 > 0xDFFF {
             if validate {
-                return error(read, ErrorCode::LoneLeadingSurrogateInHexEscape);
+                return error_or_replace(read, scratch, false, ErrorCode::LoneLeadingSurrogateInHexEscape);
             }
             push_wtf8_codepoint(n1 as u32, scratch);
             // If n2 is a leading surrogate, we need to restart.
