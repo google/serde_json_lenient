@@ -186,7 +186,7 @@ trait UtfOutputStrategy<T: ?Sized> {
 }
 
 fn convert_or_error<'de, 's, R: Read<'de>>(read: &R, slice: &'s [u8]) -> Result<&'s str> {
-    str::from_utf8(slice).or_else(|_| error(read, ErrorCode::InvalidUnicodeCodePoint))
+    str::from_utf8(slice).or_else(|_| error_no_replace(read, ErrorCode::InvalidUnicodeCodePoint))
 }
 
 struct StrUtfOutputStrategy;
@@ -207,7 +207,7 @@ impl UtfOutputStrategy<str> for StrUtfOutputStrategy {
     ) -> Result<&'s str> {
         match str::from_utf8(slice) {
             Ok(s) => Ok(s),
-            Err(_) => error(read, ErrorCode::InvalidUnicodeCodePoint),
+            Err(_) => error_no_replace(read, ErrorCode::InvalidUnicodeCodePoint),
         }
     }
 }
@@ -405,7 +405,7 @@ where
                 }
                 _ => {
                     if validate {
-                        return error(self, ErrorCode::ControlCharacterWhileParsingString);
+                        return error_no_replace(self, ErrorCode::ControlCharacterWhileParsingString);
                     }
                     scratch.push(ch);
                 }
@@ -536,7 +536,7 @@ where
                     tri!(ignore_escape(self));
                 }
                 _ => {
-                    return error(self, ErrorCode::ControlCharacterWhileParsingString);
+                    return error_no_replace(self, ErrorCode::ControlCharacterWhileParsingString);
                 }
             }
         }
@@ -549,7 +549,7 @@ where
         let d = tri!(next_or_eof(self));
         match decode_four_hex_digits(a, b, c, d) {
             Some(val) => Ok(val),
-            None => error(self, ErrorCode::InvalidEscape),
+            None => error_no_replace(self, ErrorCode::InvalidEscape),
         }
     }
 
@@ -558,7 +558,7 @@ where
         let b = tri!(next_or_eof(self));
         match decode_two_hex_digits(a, b) {
             Some(val) => Ok(val),
-            None => error(self, ErrorCode::InvalidEscape),
+            None => error_no_replace(self, ErrorCode::InvalidEscape),
         }
     }
 
@@ -575,7 +575,7 @@ where
         let raw = self.raw_buffer.take().unwrap();
         let raw = match String::from_utf8(raw) {
             Ok(raw) => raw,
-            Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint),
+            Err(_) => return error_no_replace(self, ErrorCode::InvalidUnicodeCodePoint),
         };
         visitor.visit_map(OwnedRawDeserializer {
             raw_value: Some(raw),
@@ -723,7 +723,7 @@ impl<'a> SliceRead<'a> {
         loop {
             self.skip_to_escape(validate && !self.allow_control_characters_in_string, validate && !self.allow_newlines_in_string);
             if self.index == self.slice.len() {
-                return error(self, ErrorCode::EofWhileParsingString);
+                return error_no_replace(self, ErrorCode::EofWhileParsingString);
             }
             match self.slice[self.index] {
                 b'"' => {
@@ -749,7 +749,7 @@ impl<'a> SliceRead<'a> {
                 }
                 _ => {
                     self.index += 1;
-                    return error(self, ErrorCode::ControlCharacterWhileParsingString);
+                    return error_no_replace(self, ErrorCode::ControlCharacterWhileParsingString);
                 }
             }
         }
@@ -833,7 +833,7 @@ impl<'a> Read<'a> for SliceRead<'a> {
         loop {
             self.skip_to_escape(!self.allow_control_characters_in_string, !self.allow_newlines_in_string);
             if self.index == self.slice.len() {
-                return error(self, ErrorCode::EofWhileParsingString);
+                return error_no_replace(self, ErrorCode::EofWhileParsingString);
             }
             match self.slice[self.index] {
                 b'"' => {
@@ -845,7 +845,7 @@ impl<'a> Read<'a> for SliceRead<'a> {
                     tri!(ignore_escape(self));
                 }
                 _ => {
-                    return error(self, ErrorCode::ControlCharacterWhileParsingString);
+                    return error_no_replace(self, ErrorCode::ControlCharacterWhileParsingString);
                 }
             }
         }
@@ -858,12 +858,12 @@ impl<'a> Read<'a> for SliceRead<'a> {
                 self.index += 4;
                 match decode_four_hex_digits(a, b, c, d) {
                     Some(val) => Ok(val),
-                    None => error(self, ErrorCode::InvalidEscape),
+                    None => error_no_replace(self, ErrorCode::InvalidEscape),
                 }
             }
             _ => {
                 self.index = self.slice.len();
-                error(self, ErrorCode::EofWhileParsingString)
+                error_no_replace(self, ErrorCode::EofWhileParsingString)
             }
         }
     }
@@ -875,12 +875,12 @@ impl<'a> Read<'a> for SliceRead<'a> {
                 self.index += 2;
                 match decode_two_hex_digits(a, b) {
                     Some(val) => Ok(val),
-                    None => error(self, ErrorCode::InvalidEscape),
+                    None => error_no_replace(self, ErrorCode::InvalidEscape),
                 }
             }
             _ => {
                 self.index = self.slice.len();
-                error(self, ErrorCode::EofWhileParsingString)
+                error_no_replace(self, ErrorCode::EofWhileParsingString)
             }
         }
     }
@@ -898,7 +898,7 @@ impl<'a> Read<'a> for SliceRead<'a> {
         let raw = &self.slice[self.raw_buffering_start_index..self.index];
         let raw = match str::from_utf8(raw) {
             Ok(raw) => raw,
-            Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint),
+            Err(_) => return error_no_replace(self, ErrorCode::InvalidUnicodeCodePoint),
         };
         visitor.visit_map(BorrowedRawDeserializer {
             raw_value: Some(raw),
@@ -1128,7 +1128,7 @@ where
 {
     match tri!(read.next()) {
         Some(b) => Ok(b),
-        None => error(read, ErrorCode::EofWhileParsingString),
+        None => error_no_replace(read, ErrorCode::EofWhileParsingString),
     }
 }
 
@@ -1138,11 +1138,11 @@ where
 {
     match tri!(read.peek()) {
         Some(b) => Ok(b),
-        None => error(read, ErrorCode::EofWhileParsingString),
+        None => error_no_replace(read, ErrorCode::EofWhileParsingString),
     }
 }
 
-fn error<'de, R, T>(read: &R, reason: ErrorCode) -> Result<T>
+fn error_no_replace<'de, R, T>(read: &R, reason: ErrorCode) -> Result<T>
 where
     R: ?Sized + Read<'de>,
 {
@@ -1161,7 +1161,7 @@ fn error_or_replace<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>, need
         if need_discard {
             read.discard();
         }
-        error(read, reason)
+        error_no_replace(read, reason)
     }
 }
 
@@ -1195,7 +1195,7 @@ fn parse_escape<'de, R: Read<'de>>(
             scratch.extend_from_slice(c.encode_utf8(&mut [0_u8; 4]).as_bytes());
         }
         b'u' => return parse_unicode_escape(read, validate, scratch),
-        _ => return error(read, ErrorCode::InvalidEscape),
+        _ => return error_no_replace(read, ErrorCode::InvalidEscape),
     }
 
     Ok(())
@@ -1347,7 +1347,7 @@ where
             tri!(read.decode_hex_escape_2());
         }
         _ => {
-            return error(read, ErrorCode::InvalidEscape);
+            return error_no_replace(read, ErrorCode::InvalidEscape);
         }
     }
 
