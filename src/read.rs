@@ -1142,6 +1142,13 @@ where
     }
 }
 
+// This function exists in serde_json, but has been replaced with `error_no_replace` and
+// `error_or_replace` in serde_json_lenient. If uses of `error` are merged, this function signature
+// will cause a compile error. Select the appropriate new function.
+#[allow(dead_code)]
+fn error() { }
+
+/// Return an error with the given code at the current position in `read`.
 fn error_no_replace<'de, R, T>(read: &R, reason: ErrorCode) -> Result<T>
 where
     R: ?Sized + Read<'de>,
@@ -1150,9 +1157,9 @@ where
     Err(Error::syntax(reason, position.line, position.column))
 }
 
-// In the event of an error, if replacing invalid unicode, just return REPLACEMENT CHARACTER.
-// Otherwise, discard the peeked byte representing the error if necessary and fall back to
-// error().
+/// In the event of an error, if replacing invalid unicode, just return REPLACEMENT CHARACTER.
+/// Otherwise, discard the peeked byte representing the error if necessary and fall back to
+/// error_no_replace().
 fn error_or_replace<'de, R: Read<'de>>(read: &mut R, scratch: &mut Vec<u8>, need_discard: bool, reason: ErrorCode) -> Result<()> {
     if read.replace_invalid_unicode() {
         scratch.extend("\u{fffd}".as_bytes());
