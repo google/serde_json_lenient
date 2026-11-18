@@ -1274,6 +1274,11 @@ impl<'de, R: Read<'de>> Deserializer<R> {
                 match tri!(self.parse_whitespace()) {
                     Some(b',') if accept_comma => {
                         self.eat_char();
+                        if self.ignore_trailing_commas {
+                            // Allow the closing delimiter here, but not another comma.
+                            accept_comma = false;
+                            continue;
+                        }
                         break;
                     }
                     Some(b']') if frame == b'[' => {}
