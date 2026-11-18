@@ -130,3 +130,26 @@ fn test_commas_switchable() {
     let value = Value::deserialize(&mut deserializer).unwrap();
     assert_eq!(value, json!({ "key": "value" }));
 }
+
+#[test]
+fn test_trailing_commas_in_ignored_fields() {
+    #[derive(Debug, Deserialize)]
+    struct Record {
+        kept: u8,
+    }
+
+    let input = r#"{"skipped":[1, {"nested": 2,}, /* last */ ], "kept": 3}"#;
+    assert_eq!(from_str::<Record>(input).unwrap().kept, 3);
+
+    for input in &[
+        r#"{"skipped":[1,],"kept":3}"#,
+        r#"{"skipped":{"x":1,},"kept":3}"#,
+    ] {
+        let mut de = Deserializer::from_str(input);
+        de.set_ignore_trailing_commas(false);
+        assert!(Record::deserialize(&mut de).is_err());
+    }
+
+    assert!(from_str::<Record>(r#"{"skipped":[1,,],"kept":3}"#).is_err());
+    assert!(from_str::<Record>(r#"{"skipped":{"x":1,,},"kept":3}"#).is_err());
+}
